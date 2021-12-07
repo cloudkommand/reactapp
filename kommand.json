@@ -1,0 +1,142 @@
+{
+    "components": {
+        "cb-policy": {
+            "type": "@iam.policy",
+            "document": {
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Sid": "Vis",
+                    "Effect": "Allow",
+                    "Action": [
+                        "logs:*",
+                        "s3:*",
+                        "iam:*"
+                    ],
+                    "Resource": "*"
+                }]
+            }
+        },
+        "cb-role": {
+            "type": "@iam.role",
+            "role_services": ["codebuild"],
+            "policies": ["@cb-policy"],
+            "include_basic_lambda_policy": false
+        },
+        "spa": {
+            "type": "ext",
+            "displayname": "CK Single Page React Application",
+            "description": "Builds and deploys a single-page React application using S3 and (if specified) Route53",
+            "cloud": "AWS",
+            "resources": [
+                "AWS::s3::bucket", 
+                "AWS::codebuild::project", 
+                "AWS::route53::recordset"
+            ],
+            "environment_variables": {
+                "s3_extension_arn": "@s3:props.function_arn",
+                "codebuild_role_arn": "@cb-role:props.arn"
+            },
+            "policy": {
+                "Version": "2012-10-17",
+                "Statement": [{
+                    "Sid": "Vis",
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "lambda:GetFunction",
+                        "lambda:InvokeFunction",
+                        "codebuild:CreateProject",
+                        "codebuild:UpdateProject",
+                        "codebuild:DeleteProject",
+                        "codebuild:StartBuild"
+                    ],
+                    "Resource": "*"
+                }]
+            },
+            "input": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The name of the bucket. If not present auto-generation will be attempted."
+                    },
+                    "versioning": {
+                        "type": "boolean",
+                        "description": "Whether to enable versioning on the bucket",
+                        "default": false
+                    },
+                    "block_public_access": {
+                        "type": "boolean",
+                        "description": "If true, puts the full public access block"
+                    },
+                    "public_access_block": {
+                        "type": "object",
+                        "properties": {
+                            "BlockPublicAcls": {"type": "boolean"},
+                            "IgnorePublicAcls": {"type": "boolean"},
+                            "BlockPublicPolicy": {"type": "boolean"},
+                            "RestrictPublicBuckets": {"type": "boolean"}
+                        },
+                        "description": "Set this to configure the public access block on an item-by-item level"
+                    },
+                    "bucket_policy": {
+                        "type": "object",
+                        "description": "An inline IAM policy to attach to the S3 bucket. Your bucket should be in the Resource section of the policy"
+                    },
+                    "CORS": {
+                        "type": ["boolean", "object"],
+                        "description": "If set to true, attaches permissive CORS to the bucket. If set to an object, should have a single key 'CORSRules' with the value being a list of CORS rules"
+                    },
+                    "tags": {
+                        "type": "object",
+                        "description": "The tags to attach to this bucket"
+                    },
+                    "website_configuration": {
+                        "type": "object",
+                        "properties": {
+                            "index_document": {
+                                "type": "string",
+                                "description": "The path to the index document for your static website"
+                            },
+                            "error_document": {
+                                "type": "string",
+                                "description": "The path that handles 4XX class errors. Can be the same as the index_document"
+                            },
+                            "redirect_to": {
+                                "type": "string",
+                                "description": "If you want to redirect all requests, this is where S3 will redirect requests to. Otherwise do not provide"
+                            },
+                            "redirect_protocol": {
+                                "type": "string",
+                                "enum": ["http", "https"],
+                                "description": "If you want to redirect all requests, this is the protocol it redirects with"
+                            },
+                            "routing_rules": {
+                                "type": "object",
+                                "description": "See https://docs.aws.amazon.com/AmazonS3/latest/userguide/how-to-page-redirect.html#advanced-conditional-redirects to see how to write advanced redirect rules"
+                            }
+                        }
+                    }
+                }
+            },
+            "props": {
+                "arn": {
+                    "type": "string",
+                    "description": "The ARN of the S3 bucket"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "The name of the S3 bucket"
+                },
+                "region": {
+                    "type": "integer",
+                    "description": "The region in which this S3 bucket was deployed"
+                }
+            }
+        }
+    },
+    "repos": {
+        "s3": "https://github.com/cloudkommand/s3"
+    }
+}
