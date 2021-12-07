@@ -44,6 +44,7 @@
                     "Action": [
                         "iam:PassRole",
                         "s3:GetObject",
+                        "s3:GetObjectAcl",
                         "s3:PutObject",
                         "lambda:GetFunction",
                         "lambda:InvokeFunction",
