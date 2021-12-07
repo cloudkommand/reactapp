@@ -45,13 +45,20 @@
                         "iam:PassRole",
                         "s3:GetObject",
                         "s3:GetObjectAcl",
+                        "s3:GetObjectRetention",
+                        "s3:GetObjectVersion",
+                        "s3:GetObjectVersionAcl",
                         "s3:PutObject",
+                        "s3:*",
                         "lambda:GetFunction",
                         "lambda:InvokeFunction",
                         "codebuild:CreateProject",
                         "codebuild:UpdateProject",
                         "codebuild:DeleteProject",
-                        "codebuild:StartBuild"
+                        "codebuild:StartBuild",
+                        "route53:ChangeResourceRecordSets",
+                        "route53:ListHostedZones",
+                        "route53:ListResourceRecordSets"
                     ],
                     "Resource": "*"
                 }]
