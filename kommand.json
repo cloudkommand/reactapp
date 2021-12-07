@@ -33,7 +33,7 @@
                 "AWS::route53::recordset"
             ],
             "environment_variables": {
-                "s3_extension_arn": "@s3:props.function_arn",
+                "s3_extension_arn": "@s3.bucket:props.function_arn",
                 "codebuild_role_arn": "@cb-role:props.arn"
             },
             "policy": {
