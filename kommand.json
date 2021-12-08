@@ -106,10 +106,12 @@
                         "properties": {
                             "index_document": {
                                 "type": "string",
+                                "default": "index.html",
                                 "description": "The path to the index document for your static website"
                             },
                             "error_document": {
                                 "type": "string",
+                                "default": "index.html",
                                 "description": "The path that handles 4XX class errors. Can be the same as the index_document"
                             },
                             "redirect_to": {
