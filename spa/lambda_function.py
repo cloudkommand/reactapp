@@ -438,8 +438,8 @@ def check_build_complete(bucket):
             eh.add_op("set_object_metadata")
             return None
         else:
-            eh.add_log(f"End Build: errpr", response)
-            eh.perm_error(f"End Build: errpr", progress=65)
+            eh.add_log(f"End Build: error", response)
+            eh.perm_error(f"End Build: error", progress=65)
 
     except botocore.exceptions.ClientError as e:
         if e.response['Error']['Code'] in ['NoSuchKey']:
