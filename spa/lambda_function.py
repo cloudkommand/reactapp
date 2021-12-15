@@ -229,8 +229,9 @@ def setup_status_objects(bucket):
 def setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler_name, s3_url_path, build_container_size, role_arn, prev_state):
     codebuild = boto3.client('codebuild')
     destination_bucket = eh.props['S3']['name']
+    pre_build_commands = []
 
-    pre_build_commands = ["npm install -g react-scripts"]
+    # pre_build_commands = ["npm install -g react-scripts"]
     if bundler_name == "webpack":
         pass
     elif bundler_name:
@@ -276,15 +277,15 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler
                             "THIS_BUILD_KEY": "whocares"
                         }
                     },
-                    "phases": {
+                    "phases": remove_none_attributes({
                         "install": {
                             "runtime-versions": {
                                 "nodejs": 10
                             }
                         },
-                        "pre_build": {
-                            "commands": pre_build_commands
-                        },
+                        "pre_build": remove_none_attributes({
+                            "commands": pre_build_commands or None
+                        }) or None,
                         "build": {
                             "commands": [
                                 "mkdir -p build",
@@ -297,7 +298,7 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler
                                 f'bash -c "if [ \"$CODEBUILD_BUILD_SUCCEEDING\" == \"1\" ]; then aws s3 cp s3://{bucket}/{SUCCESS_FILE} s3://{bucket}/$THIS_BUILD_KEY; else aws s3 cp s3://{bucket}/{ERROR_FILE} s3://{bucket}/$THIS_BUILD_KEY; fi"'
                             ]
                         }
-                    }, 
+                    }), 
                     "artifacts": {
                         "files": [
                             "**/*"
