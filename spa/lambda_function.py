@@ -170,7 +170,7 @@ def add_config(bucket, object_name, config):
     data = config['data']
 
     path_to_write = f"{directory}/{filepath}"
-    os.makedirs(path_to_write.rsplit('/', 1)[0])
+    os.makedirs(path_to_write.rsplit('/', 1)[0], exist_ok=True)
 
     with open(path_to_write, 'w') as g:
         content = f"""
