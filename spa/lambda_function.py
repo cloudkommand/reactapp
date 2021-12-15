@@ -444,7 +444,7 @@ def check_build_complete(bucket):
     except botocore.exceptions.ClientError as e:
         if e.response['Error']['Code'] in ['NoSuchKey']:
             eh.add_log("Build In Progress", {"error": None})
-            eh.retry_error(str(current_epoch_time_usec_num()), progress=65, callback_sec=5)
+            eh.retry_error(str(current_epoch_time_usec_num()), progress=65, callback_sec=8)
             # eh.add_log("Check Build Failed", {"error": str(e)}, True)
             # eh.perm_error(str(e), progress=65)
         else:
