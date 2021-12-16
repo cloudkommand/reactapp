@@ -31,6 +31,7 @@ def lambda_handler(event, context):
         cname = event.get("component_name")
         role_arn = lambda_env("codebuild_role_arn")
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
+        s3_build_object_name = f'codebuild/artifacts/{codebuild_project_name}.zip'
         build_container_size = cdef.get("build_container_size")
         s3_url_path = cdef.get("s3_url_path") or "/"
         bundler = cdef.get("bundler")
@@ -43,6 +44,7 @@ def lambda_handler(event, context):
             eh.add_op("get_state")
             eh.add_op("setup_s3")
             eh.add_op("setup_status_objects")
+            eh.add_op("put_object")
             if cdef.get("config"):
                 eh.add_op("add_config")
 
@@ -53,8 +55,9 @@ def lambda_handler(event, context):
         get_state(cname, cdef, codebuild_project_name, prev_state)
         setup_status_objects(bucket)
         add_config(bucket, object_name, cdef.get("config"))
+        put_object(bucket, object_name, s3_build_object_name)
         setup_s3(cname, cdef, index_document, error_document)
-        setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler, s3_url_path, build_container_size, role_arn, prev_state)
+        setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler, s3_url_path, build_container_size, role_arn, prev_state, s3_build_object_name, cname, repo_id)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
         set_object_metadata(cdef, s3_url_path, index_document, error_document, region)
@@ -190,6 +193,24 @@ def add_config(bucket, object_name, config):
 
     eh.add_log("Added Config", {"config": config, "filestr": content})
 
+@ext(handler=eh, op="put_object")
+def put_object(bucket, object_name, s3_build_object_name):
+    s3 = boto3.client("s3")
+
+    try:
+        response = s3.copy_object(
+            Bucket=bucket,
+            Key=s3_build_object_name,
+            CopySource=f"{bucket}/{object_name}"
+            # ,
+            # MetadataDirective="REPLACE",
+            # CacheControl="max-age=0",
+            # ContentType="text/html"
+        )
+        print(f"copy_object response = {response}")
+    except ClientError as e:
+        handle_common_errors(e, eh, "Copying Zipfile Failed", 15)
+
 @ext(handler=eh, op="setup_status_objects")
 def setup_status_objects(bucket):
     s3 = boto3.client("s3")
@@ -226,7 +247,7 @@ def setup_status_objects(bucket):
 
 
 @ext(handler=eh, op="setup_codebuild_project")
-def setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler_name, s3_url_path, build_container_size, role_arn, prev_state):
+def setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler_name, s3_url_path, build_container_size, role_arn, prev_state, s3_build_object_name, component_name, repo_id):
     codebuild = boto3.client('codebuild')
     destination_bucket = eh.props['S3']['name']
     pre_build_commands = []
@@ -266,10 +287,10 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler
     try:
         params = {
             "name": codebuild_project_name,
-            "description": "unknown, could be a hash",
+            "description": f"Codebuild project for component {component_name} in app {repo_id}",
             "source": {
                 "type": "S3",
-                "location": f"{bucket}/{object_name}",
+                "location": f"{bucket}/{s3_build_object_name}",
                 "buildspec": json.dumps({
                     "version": 0.2,
                     "env": {
