@@ -34,7 +34,7 @@ def lambda_handler(event, context):
         s3_build_object_name = f'codebuild/artifacts/{codebuild_project_name}.zip'
         build_container_size = cdef.get("build_container_size")
         s3_url_path = cdef.get("s3_url_path") or "/"
-        bundler = cdef.get("bundler")
+        # bundler = cdef.get("bundler")
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
     
@@ -57,7 +57,7 @@ def lambda_handler(event, context):
         add_config(bucket, object_name, cdef.get("config"))
         put_object(bucket, object_name, s3_build_object_name)
         setup_s3(cname, cdef, index_document, error_document)
-        setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler, s3_url_path, build_container_size, role_arn, prev_state, s3_build_object_name, cname, repo_id)
+        setup_codebuild_project(codebuild_project_name, bucket, object_name, s3_url_path, build_container_size, role_arn, prev_state, s3_build_object_name, cname, repo_id)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
         set_object_metadata(cdef, s3_url_path, index_document, error_document, region)
@@ -247,25 +247,25 @@ def setup_status_objects(bucket):
 
 
 @ext(handler=eh, op="setup_codebuild_project")
-def setup_codebuild_project(codebuild_project_name, bucket, object_name, bundler_name, s3_url_path, build_container_size, role_arn, prev_state, s3_build_object_name, component_name, repo_id):
+def setup_codebuild_project(codebuild_project_name, bucket, object_name, s3_url_path, build_container_size, role_arn, prev_state, s3_build_object_name, component_name, repo_id):
     codebuild = boto3.client('codebuild')
     destination_bucket = eh.props['S3']['name']
     pre_build_commands = []
 
     # pre_build_commands = ["npm install -g react-scripts"]
-    if bundler_name == "webpack":
-        pass
-    elif bundler_name:
-        pre_build_commands.extend([f"npm install -g {bundler_name}"])
-    else:
-        pre_build_commands.extend([
-            "npm install -g webpack",
-            "npm install -g vite",
-            "npm install -g browserify",
-            "npm install -g esbuild",
-            "npm install -g rollup",
-            "npm install -g parcel"
-        ])
+    # if bundler_name == "webpack":
+    #     pass
+    # elif bundler_name:
+    #     pre_build_commands.extend([f"npm install -g {bundler_name}"])
+    # else:
+    #     pre_build_commands.extend([
+    #         "npm install -g webpack",
+    #         "npm install -g vite",
+    #         "npm install -g browserify",
+    #         "npm install -g esbuild",
+    #         "npm install -g rollup",
+    #         "npm install -g parcel"
+    #     ])
 
     if build_container_size:
         if (build_container_size.lower() == "small") or (build_container_size == 1):
