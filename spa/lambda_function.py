@@ -372,10 +372,10 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, s3_url_
                     eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
                 
                 else:
-                    eh.add_log("No Need to Update Project", response)
+                    eh.add_log("No Need to Update Project", {"name": codebuild_project_name})
                     eh.add_props({
-                        "codebuild_project_arn": response['arn'],
-                        "codebuild_project_name": response['name'],
+                        "codebuild_project_arn": prev_state.get("props", {}).get("codebuild_project_arn"),
+                        "codebuild_project_name": prev_state.get("props", {}).get("codebuild_project_name"),
                         "hash": json.dumps(params, sort_keys=True)
                     })
                     eh.add_op("start_build")
