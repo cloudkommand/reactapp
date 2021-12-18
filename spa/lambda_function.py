@@ -360,26 +360,26 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, s3_url_
     except botocore.exceptions.ClientError as e:
         if e.response['Error']['Code'] == "ResourceAlreadyExistsException":
             try:
-                if this_params_hash != prev_state.get("props", {}).get("hash"):
-                    response = codebuild.update_project(**params).get("project")
-                    eh.add_log("Updated Codebuild Project", response)
-                    eh.add_props({
-                        "codebuild_project_arn": response['arn'],
-                        "codebuild_project_name": response['name'],
-                        "hash": json.dumps(params, sort_keys=True)
-                    })
-                    eh.add_op("start_build")
-                    eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
+                # if this_params_hash != prev_state.get("props", {}).get("hash"):
+                response = codebuild.update_project(**params).get("project")
+                eh.add_log("Updated Codebuild Project", response)
+                eh.add_props({
+                    "codebuild_project_arn": response['arn'],
+                    "codebuild_project_name": response['name'],
+                    "hash": json.dumps(params, sort_keys=True)
+                })
+                eh.add_op("start_build")
+                eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
                 
-                else:
-                    eh.add_log("No Need to Update Project", {"name": codebuild_project_name})
-                    eh.add_props({
-                        "codebuild_project_arn": prev_state.get("props", {}).get("codebuild_project_arn"),
-                        "codebuild_project_name": prev_state.get("props", {}).get("codebuild_project_name"),
-                        "hash": json.dumps(params, sort_keys=True)
-                    })
-                    eh.add_op("start_build")
-                    eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
+                # else:
+                #     eh.add_log("No Need to Update Project", {"name": codebuild_project_name})
+                #     eh.add_props({
+                #         "codebuild_project_arn": prev_state.get("props", {}).get("codebuild_project_arn"),
+                #         "codebuild_project_name": prev_state.get("props", {}).get("codebuild_project_name"),
+                #         "hash": json.dumps(params, sort_keys=True)
+                #     })
+                #     eh.add_op("start_build")
+                #     eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
 
             except botocore.exceptions.ClientError as e:
                 if e.response['Error']['Code'] == "InvalidInputException":
