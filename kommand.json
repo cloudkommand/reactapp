@@ -34,7 +34,8 @@
             ],
             "environment_variables": {
                 "s3_extension_arn": "@s3.bucket:props.function_arn",
-                "codebuild_role_arn": "@cb-role:props.arn"
+                "codebuild_role_arn": "@cb-role:props.arn",
+                "route53_extension_arn": "@route53.record:props.function_arn"
             },
             "download_folder": true,
             "policy": {
@@ -44,22 +45,13 @@
                     "Effect": "Allow",
                     "Action": [
                         "iam:PassRole",
-                        "s3:GetObject",
-                        "s3:GetObjectAcl",
-                        "s3:GetObjectRetention",
-                        "s3:GetObjectVersion",
-                        "s3:GetObjectVersionAcl",
-                        "s3:PutObject",
                         "s3:*",
                         "lambda:GetFunction",
                         "lambda:InvokeFunction",
                         "codebuild:CreateProject",
                         "codebuild:UpdateProject",
                         "codebuild:DeleteProject",
-                        "codebuild:StartBuild",
-                        "route53:ChangeResourceRecordSets",
-                        "route53:ListHostedZones",
-                        "route53:ListResourceRecordSets"
+                        "codebuild:StartBuild"
                     ],
                     "Resource": "*"
                 }]
@@ -150,6 +142,7 @@
     },
     "repos": {
         "s3": "https://github.com/cloudkommand/s3",
-        "iam": "https://github.com/cloudkommand/iam"
+        "iam": "https://github.com/cloudkommand/iam",
+        "route53": "https://github.com/cloudkommand/route53"
     }
 }

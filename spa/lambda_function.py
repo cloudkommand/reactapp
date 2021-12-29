@@ -47,6 +47,8 @@ def lambda_handler(event, context):
             eh.add_op("put_object")
             if cdef.get("config"):
                 eh.add_op("add_config")
+            if cdef.get("base_domain"):
+                eh.add_op("setup_route53")
 
         elif event.get("op") == "delete":
             eh.add_op("setup_s3")
@@ -61,6 +63,7 @@ def lambda_handler(event, context):
         start_build(codebuild_project_name)
         check_build_complete(bucket)
         set_object_metadata(cdef, s3_url_path, index_document, error_document, region)
+        setup_route53(cname, cdef)
         remove_codebuild_project()
             
         return eh.finish()
@@ -82,7 +85,35 @@ def get_state(cname, cdef, codebuild_project_name, prev_state):
         prev_codebuild_project_name = prev_state.get("props").get("codebuild_project_name")
         if codebuild_project_name != prev_codebuild_project_name:
             eh.add_op("remove_codebuild_project", {"create_and_remove": True, "name": prev_codebuild_project_name})
-            
+
+
+@ext(handler=eh, op="setup_route53")
+def setup_route53(cname, cdef):
+    # l_client = boto3.client('lambda')
+    print(f"props = {eh.props}")
+    # website_configuration = None
+    # block_public_access = True
+    # public_access_block = None
+    # acl = None
+    if cdef.get("cloudfront"):
+        # component_def = {
+        #     "domain": c
+        # }
+        pass
+    else: #Neither R53 or Cloudfront
+        component_def = {
+            "base_domain": cdef['base_domain'],
+            "target_s3_region": eh.ops["S3"].get("region"),
+            "target_s3_bucket": eh.ops["S3"].get("name")
+        }
+
+    function_arn = lambda_env('route53_extension_arn')
+
+    proceed = eh.invoke_extension(
+        arn=function_arn, component_def=component_def, 
+        child_key="Route53", progress_start=85, progress_end=100,
+        merge_props=True)
+    print(f"proceed = {proceed}")        
 
 @ext(handler=eh, op="setup_s3")
 def setup_s3(cname, cdef, index_document, error_document):
@@ -108,9 +139,9 @@ def setup_s3(cname, cdef, index_document, error_document):
                 }
             ]
         }
-    elif cdef.get("base_domain"):
-        bucket_policy = "TBD"
-    else: #Neither R53 or Cloudfront
+    # elif cdef.get("base_domain"):
+    #     bucket_policy = "TBD"
+    else: #No Cloudfront
         bucket_policy = {
             "Version": "2012-10-17",
             "Id": "BucketPolicy",
@@ -531,7 +562,7 @@ def set_object_metadata(cdef, s3_url_path, index_document, error_document, regio
             eh.add_links({"Website URL": gen_s3_url(bucket_name, s3_url_path, region)})
     except botocore.exceptions.ClientError as e:
         eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
-        eh.retry_error(str(e), 95)
+        eh.retry_error(str(e), 95 if not cdef.get("base_domain") else 85)
 
 # http://ck-azra-web-bucket.s3-website-us-east-1.amazonaws.com/login 
 def gen_s3_url(bucket_name, s3_url_path, region):
