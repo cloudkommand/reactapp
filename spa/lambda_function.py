@@ -113,6 +113,9 @@ def setup_route53(cname, cdef):
         arn=function_arn, component_def=component_def, 
         child_key="Route53", progress_start=85, progress_end=100,
         merge_props=True)
+
+    if proceed:
+        eh.add_links({"Website URL": eh.props["Route53"].get("domain")})
     print(f"proceed = {proceed}")        
 
 @ext(handler=eh, op="setup_s3")
