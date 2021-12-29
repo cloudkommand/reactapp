@@ -103,8 +103,8 @@ def setup_route53(cname, cdef):
     else: #Neither R53 or Cloudfront
         component_def = {
             "base_domain": cdef['base_domain'],
-            "target_s3_region": eh.ops["S3"].get("region"),
-            "target_s3_bucket": eh.ops["S3"].get("name")
+            "target_s3_region": eh.props["S3"].get("region"),
+            "target_s3_bucket": eh.props["S3"].get("name")
         }
 
     function_arn = lambda_env('route53_extension_arn')
