@@ -117,7 +117,7 @@ def setup_route53(cname, cdef, prev_state):
         merge_props=True)
 
     if proceed:
-        eh.add_links({"Website URL": f'https://{eh.props["Route53"].get("domain")}'})
+        eh.add_links({"Website URL": f'http://{eh.props["Route53"].get("domain")}'})
     print(f"proceed = {proceed}")        
 
 @ext(handler=eh, op="setup_s3")
