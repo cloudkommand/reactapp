@@ -65,7 +65,7 @@ def lambda_handler(event, context):
         start_build(codebuild_project_name)
         check_build_complete(bucket)
         set_object_metadata(cdef, s3_url_path, index_document, error_document, region)
-        setup_route53(cname, cdef)
+        setup_route53(cname, cdef, prev_state)
         remove_codebuild_project()
             
         return eh.finish()
