@@ -47,7 +47,7 @@ def lambda_handler(event, context):
             eh.add_op("put_object")
             if cdef.get("config"):
                 eh.add_op("add_config")
-            if cdef.get("base_domain"):
+            if cdef.get("domain"):
                 eh.add_op("setup_route53")
 
         elif event.get("op") == "delete":
@@ -102,7 +102,6 @@ def setup_route53(cname, cdef):
         pass
     else: #Neither R53 or Cloudfront
         component_def = {
-            "base_domain": cdef['base_domain'],
             "target_s3_region": eh.props["S3"].get("region"),
             "target_s3_bucket": eh.props["S3"].get("name")
         }
@@ -170,6 +169,7 @@ def setup_s3(cname, cdef, index_document, error_document):
     function_arn = lambda_env('s3_extension_arn')
     component_def = remove_none_attributes({
         # "CORS": True,
+        "name": cdef.get("domain"),
         "website_configuration": website_configuration,
         "bucket_policy": bucket_policy,
         "block_public_access": block_public_access,
