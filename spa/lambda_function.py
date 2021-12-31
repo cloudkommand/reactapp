@@ -53,6 +53,8 @@ def lambda_handler(event, context):
         elif event.get("op") == "delete":
             eh.add_op("setup_s3")
             eh.add_op("remove_codebuild_project", {"create_and_remove": False, "name": codebuild_project_name})
+            if cdef.get("domain"):
+                eh.add_op("setup_route53")
 
         get_state(cname, cdef, codebuild_project_name, prev_state)
         setup_status_objects(bucket)
