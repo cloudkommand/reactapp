@@ -56,7 +56,8 @@ def lambda_handler(event, context):
             print(prev_state)
             print(prev_state.get("props"))
             print(prev_state.get("rendef"))
-            eh.add_props(prev_state.get("props", {}).get("S3", {}))
+            eh.add_props(prev_state.get("props", {}))
+            print(eh.props)
             if cdef.get("domain"):
                 eh.add_op("setup_route53")
 
