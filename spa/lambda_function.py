@@ -53,7 +53,7 @@ def lambda_handler(event, context):
         elif event.get("op") == "delete":
             eh.add_op("setup_s3")
             eh.add_op("remove_codebuild_project", {"create_and_remove": False, "name": codebuild_project_name})
-            eh.add_props(prev_state.get("rendef", {}).get("props", {}).get("S3", {}))
+            eh.add_props(prev_state.get("props", {}).get("S3", {}))
             if cdef.get("domain"):
                 eh.add_op("setup_route53")
 
