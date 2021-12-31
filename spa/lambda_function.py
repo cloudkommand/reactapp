@@ -90,7 +90,7 @@ def get_state(cname, cdef, codebuild_project_name, prev_state):
 
 
 @ext(handler=eh, op="setup_route53")
-def setup_route53(cname, cdef):
+def setup_route53(cname, cdef, prev_state):
     # l_client = boto3.client('lambda')
     print(f"props = {eh.props}")
     # website_configuration = None
@@ -103,9 +103,10 @@ def setup_route53(cname, cdef):
         # }
         pass
     else: #Neither R53 or Cloudfront
+        S3 = eh.props.get("S3", {}) or prev_state.get("rendef", {}).get("S3", {})
         component_def = {
-            "target_s3_region": eh.props["S3"].get("region"),
-            "target_s3_bucket": eh.props["S3"].get("name")
+            "target_s3_region": S3.get("region"),
+            "target_s3_bucket": S3.get("name")
         }
 
     function_arn = lambda_env('route53_extension_arn')
