@@ -53,6 +53,7 @@ def lambda_handler(event, context):
         elif event.get("op") == "delete":
             eh.add_op("setup_s3")
             eh.add_op("remove_codebuild_project", {"create_and_remove": False, "name": codebuild_project_name})
+            eh.add_props(prev_state.get("rendef", {}).get("S3", {}))
             if cdef.get("domain"):
                 eh.add_op("setup_route53")
 
@@ -91,19 +92,15 @@ def get_state(cname, cdef, codebuild_project_name, prev_state):
 
 @ext(handler=eh, op="setup_route53")
 def setup_route53(cname, cdef, prev_state):
-    # l_client = boto3.client('lambda')
     print(f"props = {eh.props}")
-    # website_configuration = None
-    # block_public_access = True
-    # public_access_block = None
-    # acl = None
     if cdef.get("cloudfront"):
         # component_def = {
         #     "domain": c
         # }
         pass
-    else: #Neither R53 or Cloudfront
-        S3 = eh.props.get("S3", {}) or prev_state.get("rendef", {}).get("S3", {})
+    else:
+        #  or prev_state.get("rendef", {}).get("S3", {})
+        S3 = eh.props.get("S3", {})
         component_def = {
             "target_s3_region": S3.get("region"),
             "target_s3_bucket": S3.get("name")
