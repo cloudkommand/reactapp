@@ -115,7 +115,7 @@ def setup_route53(cname, cdef, prev_state):
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
         child_key="Route53", progress_start=85, progress_end=100,
-        merge_props=True)
+        merge_props=False)
 
     if proceed:
         eh.add_links({"Website URL": f'http://{eh.props["Route53"].get("domain")}'})
