@@ -34,6 +34,7 @@ def lambda_handler(event, context):
         # s3_build_object_name = f'codebuild/artifacts/{codebuild_project_name}.zip'
         build_container_size = cdef.get("build_container_size")
         s3_url_path = cdef.get("s3_url_path") or "/"
+        domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True), cdef.get("base_domain")) if cdef.get("base_domain") else None)
         # bundler = cdef.get("bundler")
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
@@ -47,7 +48,7 @@ def lambda_handler(event, context):
             eh.add_op("put_object")
             if cdef.get("config"):
                 eh.add_op("add_config")
-            if cdef.get("domain"):
+            if domain:
                 eh.add_op("setup_route53")
 
         elif event.get("op") == "delete":
@@ -58,18 +59,18 @@ def lambda_handler(event, context):
             print(prev_state.get("rendef"))
             eh.add_props(prev_state.get("props", {}))
             print(eh.props)
-            if cdef.get("domain"):
+            if domain:
                 eh.add_op("setup_route53")
 
         get_state(cname, cdef, codebuild_project_name, prev_state)
         setup_status_objects(bucket)
         add_config(bucket, object_name, cdef.get("config"))
         # put_object(bucket, object_name, s3_build_object_name)
-        setup_s3(cname, cdef, index_document, error_document)
+        setup_s3(cname, cdef, domain, index_document, error_document)
         setup_codebuild_project(codebuild_project_name, bucket, object_name, s3_url_path, build_container_size, role_arn, prev_state, cname, repo_id)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
-        set_object_metadata(cdef, s3_url_path, index_document, error_document, region)
+        set_object_metadata(cdef, s3_url_path, index_document, error_document, region, domain)
         setup_route53(cname, cdef, prev_state)
         remove_codebuild_project()
             
@@ -122,7 +123,7 @@ def setup_route53(cname, cdef, prev_state):
     print(f"proceed = {proceed}")        
 
 @ext(handler=eh, op="setup_s3")
-def setup_s3(cname, cdef, index_document, error_document):
+def setup_s3(cname, cdef, domain, index_document, error_document):
     # l_client = boto3.client('lambda')
 
     website_configuration = None
@@ -173,7 +174,7 @@ def setup_s3(cname, cdef, index_document, error_document):
     function_arn = lambda_env('s3_extension_arn')
     component_def = remove_none_attributes({
         # "CORS": True,
-        "name": cdef.get("domain"),
+        "name": domain,
         "website_configuration": website_configuration,
         "bucket_policy": bucket_policy,
         "block_public_access": block_public_access,
@@ -533,7 +534,7 @@ def check_build_complete(bucket):
     
     
 @ext(handler=eh, op="set_object_metadata")
-def set_object_metadata(cdef, s3_url_path, index_document, error_document, region):
+def set_object_metadata(cdef, s3_url_path, index_document, error_document, region, domain):
     s3 = boto3.client('s3')
 
     bucket_name = eh.props['S3']['name']
@@ -565,11 +566,11 @@ def set_object_metadata(cdef, s3_url_path, index_document, error_document, regio
             )
             eh.add_log(f"Fixed {error_document}", response)
 
-        if not cdef.get("cloudfront") or cdef.get("base_domain"):
+        if (not cdef.get("cloudfront")) and (not domain):
             eh.add_links({"Website URL": gen_s3_url(bucket_name, s3_url_path, region)})
     except botocore.exceptions.ClientError as e:
         eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
-        eh.retry_error(str(e), 95 if not cdef.get("base_domain") else 85)
+        eh.retry_error(str(e), 95 if not domain else 85)
 
 # http://ck-azra-web-bucket.s3-website-us-east-1.amazonaws.com/login 
 def gen_s3_url(bucket_name, s3_url_path, region):
@@ -588,6 +589,11 @@ def create_zip(file_name, path):
                                        os.path.join(path, '')))
     ziph.close()
 
+def form_domain(bucket, base_domain):
+    if bucket and base_domain:
+        return f"{bucket}.{base_domain}"
+    else:
+        return None
 # @ext(handler=eh, op="get_codebuild_project")
 # def get_codebuild_project():
 #     codebuild = boto3.client('codebuild')

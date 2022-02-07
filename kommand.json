@@ -59,83 +59,74 @@
             "input": {
                 "type": "object",
                 "properties": {
-                    "name": {
+                    "codebuild_project_name": {
                         "type": "string",
-                        "description": "The name of the bucket. If not present auto-generation will be attempted."
+                        "description": "The name of the codebuild project. If not present this name will be auto-generated."
                     },
-                    "versioning": {
-                        "type": "boolean",
-                        "description": "Whether to enable versioning on the bucket",
-                        "default": false
+                    "build_container_size": {
+                        "type": "string",
+                        "description": "The size of the codebuild container. Can speed up builds if you expect them to take a long time.",
+                        "enum": ["small", "medium", "large", "2xlarge"],
+                        "default": "medium"
                     },
-                    "block_public_access": {
-                        "type": "boolean",
-                        "description": "If true, puts the full public access block"
+                    "index_document": {
+                        "type": "string",
+                        "description": "The path to the index document for the website",
+                        "default": "index.html"
                     },
-                    "public_access_block": {
+                    "error_document": {
+                        "type": "string",
+                        "description": "The path that handles 4XX class errors. Can be the same as the index_document",
+                        "default": "index.html"
+                    },
+                    "s3_url_path": {
+                        "type": "string",
+                        "description": "A prefix to add in front of the s3 object"
+                    },
+                    "s3_tags": {
                         "type": "object",
+                        "description": "Key-value pairs to attach as tags to the s3 bucket"
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "The domain name for your website"
+                    },
+                    "base_domain": {
+                        "type": "string",
+                        "description": "Pass a base domain to get a unique domain through a generated subdomain"
+                    },
+                    "config": {
+                        "type": "object",
+                        "description": "Use this parameter to inject environment-variable like data into your react app. Passing this parameter writes a file into the provided path with the following function: export function get_config() {{return {json.dumps(data, indent=2)}}};",
                         "properties": {
-                            "BlockPublicAcls": {"type": "boolean"},
-                            "IgnorePublicAcls": {"type": "boolean"},
-                            "BlockPublicPolicy": {"type": "boolean"},
-                            "RestrictPublicBuckets": {"type": "boolean"}
-                        },
-                        "description": "Set this to configure the public access block on an item-by-item level"
-                    },
-                    "bucket_policy": {
-                        "type": "object",
-                        "description": "An inline IAM policy to attach to the S3 bucket. Your bucket should be in the Resource section of the policy"
-                    },
-                    "CORS": {
-                        "type": ["boolean", "object"],
-                        "description": "If set to true, attaches permissive CORS to the bucket. If set to an object, should have a single key 'CORSRules' with the value being a list of CORS rules"
-                    },
-                    "tags": {
-                        "type": "object",
-                        "description": "The tags to attach to this bucket"
-                    },
-                    "website_configuration": {
-                        "type": "object",
-                        "properties": {
-                            "index_document": {
+                            "path": {
                                 "type": "string",
-                                "default": "index.html",
-                                "description": "The path to the index document for your static website"
+                                "description": "The path to the config file to write"
                             },
-                            "error_document": {
-                                "type": "string",
-                                "default": "index.html",
-                                "description": "The path that handles 4XX class errors. Can be the same as the index_document"
-                            },
-                            "redirect_to": {
-                                "type": "string",
-                                "description": "If you want to redirect all requests, this is where S3 will redirect requests to. Otherwise do not provide"
-                            },
-                            "redirect_protocol": {
-                                "type": "string",
-                                "enum": ["http", "https"],
-                                "description": "If you want to redirect all requests, this is the protocol it redirects with"
-                            },
-                            "routing_rules": {
+                            "data": {
                                 "type": "object",
-                                "description": "See https://docs.aws.amazon.com/AmazonS3/latest/userguide/how-to-page-redirect.html#advanced-conditional-redirects to see how to write advanced redirect rules"
+                                "description": "Key value pairs to add to the function in the config file."
                             }
                         }
                     }
                 }
             },
             "props": {
-                "arn": {
+                "codebuild_project_arn": {
                     "type": "string",
-                    "description": "The ARN of the S3 bucket"
+                    "description": "The ARN of the codebuild project"
                 },
-                "name": {
+                "codebuild_project_name": {
                     "type": "string",
-                    "description": "The name of the S3 bucket"
+                    "description": "The name of the codebuild project"
                 },
-                "region": {
-                    "type": "integer",
-                    "description": "The region in which this S3 bucket was deployed"
+                "S3": {
+                    "type": "object",
+                    "description": "Props from the S3 component deployed"
+                },
+                "Route53": {
+                    "type": "object",
+                    "description": "Props from the route53 component deployed, if there is one"
                 }
             }
         }
