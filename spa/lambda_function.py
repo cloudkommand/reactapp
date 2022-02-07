@@ -32,7 +32,7 @@ def lambda_handler(event, context):
         cname = event.get("component_name")
         role_arn = lambda_env("codebuild_role_arn")
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
-        if not object_name:
+        if (event.get("op") == "upsert") and not object_name:
             eh.add_log(f"No files found", {"cname": cname}, True)
             eh.perm_error(f"No files found in the folder {cname} in repo {repo_id}. Please add a UI to the folder", 0)
             return eh.finish()
