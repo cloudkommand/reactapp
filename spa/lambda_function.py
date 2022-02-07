@@ -34,7 +34,8 @@ def lambda_handler(event, context):
         # s3_build_object_name = f'codebuild/artifacts/{codebuild_project_name}.zip'
         build_container_size = cdef.get("build_container_size")
         s3_url_path = cdef.get("s3_url_path") or "/"
-        domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True), cdef.get("base_domain")) if cdef.get("base_domain") else None)
+        base_domain_length = len(cdef.get("base_domain"))
+        domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
         # bundler = cdef.get("bundler")
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
