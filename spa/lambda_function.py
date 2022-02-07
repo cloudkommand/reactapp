@@ -24,6 +24,7 @@ def lambda_handler(event, context):
         eh.capture_event(event)
         bucket = event.get("bucket")
         object_name = event.get("s3_object_name")
+
         prev_state = event.get("prev_state") or {}
         project_code = event.get("project_code")
         repo_id = event.get("repo_id")
@@ -31,12 +32,16 @@ def lambda_handler(event, context):
         cname = event.get("component_name")
         role_arn = lambda_env("codebuild_role_arn")
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
-        # s3_build_object_name = f'codebuild/artifacts/{codebuild_project_name}.zip'
+        if not object_name:
+            eh.add_log(f"No files found", {"cname": cname}, True)
+            eh.perm_error(f"No files found in the folder {cname} in repo {repo_id}. Please add a UI to the folder", 0)
+            return eh.finish()
+
         build_container_size = cdef.get("build_container_size")
         s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain"))
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
-        # bundler = cdef.get("bundler")
+
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
     
