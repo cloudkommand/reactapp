@@ -63,6 +63,10 @@
                         "type": "string",
                         "description": "The name of the codebuild project. If not present this name will be auto-generated."
                     },
+                    "codebuild_runtime_versions": {
+                        "type": "object",
+                        "description": "The dictionary of runtime versions you need to build your app. If not set, this will default to {\"nodejs\": 10}. See a list of possible values here: https://docs.aws.amazon.com/codebuild/latest/userguide/runtime-versions.html"
+                    },
                     "build_container_size": {
                         "type": "string",
                         "description": "The size of the codebuild container. Can speed up builds if you expect them to take a long time.",
