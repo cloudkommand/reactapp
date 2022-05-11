@@ -81,7 +81,7 @@
                     },
                     "s3_url_path": {
                         "type": "string",
-                        "description": "A prefix to add in front of the s3 object"
+                        "description": "A prefix to add in front of the all s3 objects, including the index and error documents"
                     },
                     "s3_tags": {
                         "type": "object",
