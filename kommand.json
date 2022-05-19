@@ -65,9 +65,10 @@
                     },
                     "codebuild_runtime_versions": {
                         "type": "object",
-                        "description": "The dictionary of runtime versions you need to build your app. If not set, this will default to {\"nodejs\": 10}. See a list of possible values here: https://docs.aws.amazon.com/codebuild/latest/userguide/runtime-versions.html"
+                        "description": "The dictionary of runtime versions you need to build your app. If not set, this will default to {\"nodejs\": 10}. See a list of possible values here: https://docs.aws.amazon.com/codebuild/latest/userguide/runtime-versions.html",
+                        "default": {"nodejs": 10}
                     },
-                    "install_commands": {
+                    "codebuild_install_commands": {
                         "type": "array",
                         "description": "Commands installing required libraries/packages before a build is run.",
                         "default": []
