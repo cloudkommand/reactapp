@@ -108,6 +108,11 @@
                         "description": "Whether to create a CloudFront distribution for your website",
                         "default": false
                     },
+                    "keep_bucket_private": {
+                        "type": "boolean",
+                        "description": "Whether to keep the bucket private (using a cloudfront origin access identity) or not",
+                        "default": false
+                    },
                     "config": {
                         "type": "object",
                         "description": "Use this parameter to inject environment-variable like data into your react app. Passing this parameter writes a file into the provided path with the following function: export function get_config() {{return {json.dumps(data, indent=2)}}};",
