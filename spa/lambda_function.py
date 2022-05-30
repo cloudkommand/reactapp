@@ -34,15 +34,14 @@ def lambda_handler(event, context):
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
         codebuild_runtime_versions = cdef.get("codebuild_runtime_versions") or {"nodejs": 10} # assume dictionary with this format
         codebuild_install_commands = cdef.get("codebuild_install_commands") or None
-        if (event.get("op") == "upsert") and not object_name:
-            eh.add_log(f"No files found", {"cname": cname}, True)
-            eh.perm_error(f"No files found in the folder {cname} in repo {repo_id}. Please add a UI to the folder", 0)
-            return eh.finish()
 
         build_container_size = cdef.get("build_container_size")
         # s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
+        if cdef.get("cloudfront") and not domain:
+            eh.add_log("Cloudfront requires a domain", {"cdef": cdef}, True)
+            eh.perm_error("Cloudfront requires a domain", 0)
 
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
