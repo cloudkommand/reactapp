@@ -34,15 +34,14 @@ def lambda_handler(event, context):
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
         codebuild_runtime_versions = cdef.get("codebuild_runtime_versions") or {"nodejs": 10} # assume dictionary with this format
         codebuild_install_commands = cdef.get("codebuild_install_commands") or None
-        if (event.get("op") == "upsert") and not object_name:
-            eh.add_log(f"No files found", {"cname": cname}, True)
-            eh.perm_error(f"No files found in the folder {cname} in repo {repo_id}. Please add a UI to the folder", 0)
-            return eh.finish()
 
         build_container_size = cdef.get("build_container_size")
-        s3_url_path = cdef.get("s3_url_path") or "/"
+        # s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
+        if cdef.get("cloudfront") and not domain:
+            eh.add_log("Cloudfront requires a domain", {"cdef": cdef}, True)
+            eh.perm_error("Cloudfront requires a domain", 0)
 
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
@@ -54,6 +53,10 @@ def lambda_handler(event, context):
             eh.add_op("setup_s3")
             eh.add_op("setup_status_objects")
             eh.add_op("put_object")
+            if cdef.get("cloudfront"):
+                eh.add_op("setup_cloudfront_distribution")
+                if cdef.get("keep_bucket_private"):
+                    eh.add_op("setup_cloudfront_oai")
             if cdef.get("config"):
                 eh.add_op("add_config")
             if domain:
@@ -67,6 +70,10 @@ def lambda_handler(event, context):
             print(prev_state.get("rendef"))
             eh.add_props(prev_state.get("props", {}))
             print(eh.props)
+            if cdef.get("cloudfront"):
+                eh.add_op("setup_cloudfront_distribution")
+                if cdef.get("keep_bucket_private"):
+                    eh.add_op("setup_cloudfront_oai")
             if domain:
                 eh.add_op("setup_route53")
 
@@ -74,12 +81,14 @@ def lambda_handler(event, context):
         setup_status_objects(bucket)
         add_config(bucket, object_name, cdef.get("config"))
         # put_object(bucket, object_name, s3_build_object_name)
+        setup_cloudfront_oai()
         setup_s3(cname, cdef, domain, index_document, error_document)
-        setup_codebuild_project(codebuild_project_name, bucket, object_name, s3_url_path, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands)
+        setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
-        set_object_metadata(cdef, s3_url_path, index_document, error_document, region, domain)
-        setup_route53(cname, cdef, prev_state)
+        set_object_metadata(cdef, index_document, error_document, region, domain)
+        setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state)
+        setup_route53(cname, cdef, domain, prev_state)
         remove_codebuild_project()
             
         return eh.finish()
@@ -104,13 +113,14 @@ def get_state(cname, cdef, codebuild_project_name, prev_state):
 
 
 @ext(handler=eh, op="setup_route53")
-def setup_route53(cname, cdef, prev_state):
+def setup_route53(cname, cdef, domain, prev_state):
     print(f"props = {eh.props}")
     if cdef.get("cloudfront"):
-        # component_def = {
-        #     "domain": c
-        # }
-        pass
+        component_def = {
+            "domain": domain,
+            "alias_target_type": "cloudfront",
+            "target_cloudfront_domain_name": eh.props["Distribution"]["domain_name"]
+        }
     else:
         #  or prev_state.get("rendef", {}).get("S3", {})
         S3 = eh.props.get("S3", {})
@@ -128,7 +138,56 @@ def setup_route53(cname, cdef, prev_state):
 
     if proceed:
         eh.add_links({"Website URL": f'http://{eh.props["Route53"].get("domain")}'})
-    print(f"proceed = {proceed}")        
+    print(f"proceed = {proceed}")
+
+@ext(handler=eh, op="setup_cloudfront_oai")
+def setup_cloudfront_oai():
+    print(f"props = {eh.props}")
+    component_def = {}
+
+    function_arn = lambda_env('cloudfront_oai_extension_arn')
+
+    proceed = eh.invoke_extension(
+        arn=function_arn, component_def=component_def, 
+        child_key="OAI", progress_start=85, progress_end=100,
+        merge_props=False)
+    print(f"proceed = {proceed}")
+
+@ext(handler=eh, op="setup_cloudfront_distribution")
+def setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state):
+    print(f"props = {eh.props}")
+
+    S3 = eh.props.get("S3", {})
+    component_def = remove_none_attributes({
+        "aliases": [domain],
+        "target_s3_bucket": S3.get("name"),
+        "default_root_object": index_document,
+        "existing_id": cdef.get("cloudfront_existing_id"),
+        "origin_shield": cdef.get("cloudfront_origin_shield"),
+        "custom_origin_headers": cdef.get("cloudfront_custom_origin_headers"),
+        "force_https": cdef.get("cloudfront_force_https"),
+        "allowed_ssl_protocols": cdef.get("cloudfront_allowed_ssl_protocols"),
+        "price_class": cdef.get("cloudfront_price_class"),
+        "web_acl_id": cdef.get("cloudfront_web_acl_id"),
+        "logs_s3_bucket": cdef.get("cloudfront_logs_s3_bucket"),
+        "logs_include_cookies": cdef.get("cloudfront_logs_include_cookies"),
+        "logs_prefix": cdef.get("cloudfront_logs_prefix"),
+        "key_group_ids": cdef.get("cloudfront_key_group_ids"),
+        "allowed_methods": cdef.get("cloudfront_allowed_methods") or ["HEAD", "GET", "OPTIONS"],
+        "cached_methods": cdef.get("cloudfront_cached_methods") or ["HEAD", "GET", "OPTIONS"],
+        "cache_policy_id": cdef.get("cloudfront_cache_policy_id"),
+        "cache_policy_name": cdef.get("cloudfront_cache_policy_name"),
+        "tags": cdef.get("cloudfront_tags")
+    })
+
+    function_arn = lambda_env('cloudfront_distribution_extension_arn')
+
+    proceed = eh.invoke_extension(
+        arn=function_arn, component_def=component_def, 
+        child_key="Distribution", progress_start=85, progress_end=100,
+        merge_props=False)
+    print(f"proceed = {proceed}")
+
 
 @ext(handler=eh, op="setup_s3")
 def setup_s3(cname, cdef, domain, index_document, error_document):
@@ -138,7 +197,7 @@ def setup_s3(cname, cdef, domain, index_document, error_document):
     block_public_access = True
     # public_access_block = None
     acl = None
-    if cdef.get("cloudfront"):
+    if cdef.get("cloudfront") and cdef.get("keep_bucket_private"):
         bucket_policy = {
             "Version": "2012-10-17",
             "Id": "BucketPolicyCloudfront",
@@ -147,7 +206,7 @@ def setup_s3(cname, cdef, domain, index_document, error_document):
                     "Sid": "AllowCloudfront",
                     "Effect": "Allow",
                     "Principal": {
-                        "AWS": eh.ops['cloudfront_id']
+                        "AWS": eh.props["OAI"]['arn']
                     },
                     "Action": "s3:GetObject",
                     "Resource": "$SELF$/*"
@@ -294,7 +353,7 @@ def setup_status_objects(bucket):
 
 
 @ext(handler=eh, op="setup_codebuild_project")
-def setup_codebuild_project(codebuild_project_name, bucket, object_name, s3_url_path, build_container_size, role_arn, prev_state, component_name, repo_id, codebuild_runtime_versions, codebuild_install_commands):
+def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, component_name, repo_id, codebuild_runtime_versions, codebuild_install_commands):
     codebuild = boto3.client('codebuild')
     destination_bucket = eh.props['S3']['name']
     pre_build_commands = []
@@ -377,7 +436,7 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, s3_url_
             "artifacts": {
                 "type": "S3",
                 "location": destination_bucket,
-                "path": s3_url_path,
+                "path": "/",
                 "namespaceType": "NONE",
                 "name": "/",
                 "packaging": "NONE",
@@ -541,14 +600,14 @@ def check_build_complete(bucket):
     
     
 @ext(handler=eh, op="set_object_metadata")
-def set_object_metadata(cdef, s3_url_path, index_document, error_document, region, domain):
+def set_object_metadata(cdef, index_document, error_document, region, domain):
     s3 = boto3.client('s3')
 
     bucket_name = eh.props['S3']['name']
-    key = f"{s3_url_path}/{index_document}" if s3_url_path and not (s3_url_path == "/") else index_document
+    key = index_document
     print(f"bucket_name = {bucket_name}")
     print(f"key = {key}")
-    print(f"s3_url_path = {s3_url_path}")
+    # print(f"s3_url_path = {s3_url_path}")
 
     try:
         response = s3.copy_object(
@@ -562,7 +621,7 @@ def set_object_metadata(cdef, s3_url_path, index_document, error_document, regio
         eh.add_log(f"Fixed {index_document}", response)
 
         if error_document != index_document:
-            key = f"{s3_url_path}/{error_document}" if s3_url_path else error_document
+            key = error_document
             response = s3.copy_object(
                 Bucket=bucket_name,
                 Key=key,
@@ -574,7 +633,7 @@ def set_object_metadata(cdef, s3_url_path, index_document, error_document, regio
             eh.add_log(f"Fixed {error_document}", response)
 
         if (not cdef.get("cloudfront")) and (not domain):
-            eh.add_links({"Website URL": gen_s3_url(bucket_name, s3_url_path, region)})
+            eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
     except botocore.exceptions.ClientError as e:
         eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
         eh.retry_error(str(e), 95 if not domain else 85)
