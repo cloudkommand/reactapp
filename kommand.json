@@ -35,7 +35,9 @@
             "environment_variables": {
                 "s3_extension_arn": "@s3.bucket:props.function_arn",
                 "codebuild_role_arn": "@cb-role:props.arn",
-                "route53_extension_arn": "@route53.record:props.function_arn"
+                "route53_extension_arn": "@route53.record:props.function_arn",
+                "cloudfront_oai_extension_arn": "@cloudfront.oai:props.function_arn",
+                "cloudfront_distribution_extension_arn": "@cloudfront.distribution:props.function_arn"
             },
             "download_folder": true,
             "policy": {
@@ -89,10 +91,6 @@
                         "description": "The path that handles 4XX class errors. Can be the same as the index_document",
                         "default": "index.html"
                     },
-                    "s3_url_path": {
-                        "type": "string",
-                        "description": "A prefix to add in front of the all s3 objects, including the index and error documents"
-                    },
                     "s3_tags": {
                         "type": "object",
                         "description": "Key-value pairs to attach as tags to the s3 bucket"
@@ -104,6 +102,11 @@
                     "base_domain": {
                         "type": "string",
                         "description": "Pass a base domain to get a unique domain through a generated subdomain"
+                    },
+                    "cloudfront": {
+                        "type": "boolean",
+                        "description": "Whether to create a CloudFront distribution for your website",
+                        "default": false
                     },
                     "config": {
                         "type": "object",
@@ -144,6 +147,7 @@
     "repos": {
         "s3": "https://github.com/cloudkommand/s3",
         "iam": "https://github.com/cloudkommand/iam",
-        "route53": "https://github.com/cloudkommand/route53"
+        "route53": "https://github.com/cloudkommand/route53",
+        "cloudfront": "https://github.com/cloudkommand/cloudfront"
     }
 }
