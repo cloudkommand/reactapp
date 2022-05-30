@@ -162,6 +162,7 @@ def setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_stat
         "aliases": [domain],
         "target_s3_bucket": S3.get("name"),
         "default_root_object": index_document,
+        "existing_id": cdef.get("cloudfront_existing_id"),
         "origin_shield": cdef.get("cloudfront_origin_shield"),
         "custom_origin_headers": cdef.get("cloudfront_custom_origin_headers"),
         "force_https": cdef.get("cloudfront_force_https"),
