@@ -81,7 +81,7 @@ def lambda_handler(event, context):
         setup_status_objects(bucket)
         add_config(bucket, object_name, cdef.get("config"))
         # put_object(bucket, object_name, s3_build_object_name)
-        setup_cloudfront_oai()
+        setup_cloudfront_oai(cdef)
         setup_s3(cname, cdef, domain, index_document, error_document)
         setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands)
         start_build(codebuild_project_name)
@@ -141,9 +141,11 @@ def setup_route53(cname, cdef, domain, prev_state):
     print(f"proceed = {proceed}")
 
 @ext(handler=eh, op="setup_cloudfront_oai")
-def setup_cloudfront_oai():
+def setup_cloudfront_oai(cdef):
     print(f"props = {eh.props}")
-    component_def = {}
+    component_def = remove_none_attributes({
+        "existing_id": cdef.get("oai_existing_id")
+    })
 
     function_arn = lambda_env('cloudfront_oai_extension_arn')
 
