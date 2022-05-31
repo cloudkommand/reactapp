@@ -30,7 +30,9 @@
             "resources": [
                 "AWS::s3::bucket", 
                 "AWS::codebuild::project", 
-                "AWS::route53::recordset"
+                "AWS::route53::recordset",
+                "AWS::cloudfront::distribution",
+                "AWS::cloudfront::originaccessidentity"
             ],
             "environment_variables": {
                 "s3_extension_arn": "@s3.bucket:props.function_arn",
