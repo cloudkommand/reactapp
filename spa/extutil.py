@@ -315,6 +315,10 @@ class ExtensionHandler:
                 self.add_log(f"Error Invoking {child_key}", {"error": str(e)}, True)
                 self.add_log(e.response['Error']['Code'], {"error": str(e)}, True)
                 self.retry_error(str(e), progress_start)
+        except e:
+            proceed=False
+            self.add_log(f"Error Inside Extension Handler", {"error": str(e)}, True)
+            self.perm_error(str(e), progress_start)
         
         return proceed
 
