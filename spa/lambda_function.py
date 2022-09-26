@@ -61,6 +61,7 @@ def lambda_handler(event, context):
             eh.add_op("put_object")
             if cdef.get("cloudfront"):
                 eh.add_op("setup_cloudfront_distribution")
+                eh.add_op("invalidate_files")
                 if cdef.get("keep_bucket_private"):
                     eh.add_op("setup_cloudfront_oai")
             if cdef.get("config"):
@@ -254,11 +255,7 @@ def setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_stat
         child_key="Distribution", progress_start=85, progress_end=100,
         merge_props=False)
     print(f"proceed = {proceed}")
-
-    if proceed:
-        eh.add_op("invalidate_files")
-
-
+        
 @ext(handler=eh, op="setup_s3")
 def setup_s3(cname, cdef, domain, index_document, error_document):
     # l_client = boto3.client('lambda')
@@ -730,7 +727,7 @@ def invalidate_files():
         
         invalidation = response.get("Invalidation")
         if invalidation.get("Status") != "Completed":
-            eh.add_op("check_invalidation_complete", invalidation.get("Id"))
+            # eh.add_op("check_invalidation_complete", invalidation.get("Id"))
             eh.add_log("Initiated Cloudfront File Reset", response)
         else:
             eh.add_log("Cloudfront File Reset Complete", response)
@@ -738,26 +735,26 @@ def invalidate_files():
     except botocore.exceptions.ClientError as e:
         handle_common_errors(e, eh, "Resetting Cloudfront Files Error", 97)
 
-@ext(handler=eh, op="check_invalidation_complete")
-def check_invalidation_complete():
-    distribution_id = eh.props['Distribution']['id']
-    invalidation_id = eh.ops['check_invalidation_complete']
+# @ext(handler=eh, op="check_invalidation_complete")
+# def check_invalidation_complete():
+#     distribution_id = eh.props['Distribution']['id']
+#     invalidation_id = eh.ops['check_invalidation_complete']
 
-    try:
-        response = cloudfront.get_invalidation(
-            DistributionId=distribution_id,
-            Id=invalidation_id
-        )
+#     try:
+#         response = cloudfront.get_invalidation(
+#             DistributionId=distribution_id,
+#             Id=invalidation_id
+#         )
         
-        invalidation = response.get("Invalidation")
-        if invalidation.get("Status") != "Completed":
-            eh.add_log("Cloudfront Files Not Yet Reset", response)
-            eh.retry_error(str(current_epoch_time_usec_num()), progress=98, callback_sec=3)
-        else:
-            eh.add_log("Cloudfront Files Have Reset", response)
+#         invalidation = response.get("Invalidation")
+#         if invalidation.get("Status") != "Completed":
+#             eh.add_log("Cloudfront Files Not Yet Reset", response)
+#             eh.retry_error(str(current_epoch_time_usec_num()), progress=98, callback_sec=7)
+#         else:
+#             eh.add_log("Cloudfront Files Have Reset", response)
 
-    except botocore.exceptions.ClientError as e:
-        handle_common_errors(e, eh, "Check Cloudfront Reset Error", 98)
+#     except botocore.exceptions.ClientError as e:
+#         handle_common_errors(e, eh, "Check Cloudfront Reset Error", 98)
 
 # http://ck-azra-web-bucket.s3-website-us-east-1.amazonaws.com/login 
 def gen_s3_url(bucket_name, s3_url_path, region):
