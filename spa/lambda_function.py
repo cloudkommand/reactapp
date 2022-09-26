@@ -713,7 +713,7 @@ def set_object_metadata(cdef, index_document, error_document, region, domain):
 
 @ext(handler=eh, op="invalidate_files")
 def invalidate_files():
-    distribution_id = eh.props['Distribution']['distribution_id']
+    distribution_id = eh.props['Distribution']['id']
 
     try:
         response = cloudfront.create_invalidation(
@@ -739,7 +739,7 @@ def invalidate_files():
 
 @ext(handler=eh, op="check_invalidation_complete")
 def check_invalidation_complete():
-    distribution_id = eh.props['Distribution']['distribution_id']
+    distribution_id = eh.props['Distribution']['id']
     invalidation_id = eh.ops['check_invalidation_complete']
 
     try:
