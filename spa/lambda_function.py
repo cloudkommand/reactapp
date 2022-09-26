@@ -711,6 +711,7 @@ def set_object_metadata(cdef, index_document, error_document, region, domain):
         eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
         eh.retry_error(str(e), 95 if not domain else 85)
 
+#Note that invalidate files and checking for it should really be its own plugin.
 @ext(handler=eh, op="invalidate_files")
 def invalidate_files():
     distribution_id = eh.props['Distribution']['id']
