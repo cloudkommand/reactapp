@@ -103,7 +103,7 @@ def lambda_handler(event, context):
         setup_route53(cname, cdef, domain, prev_state)
         remove_codebuild_project()
         invalidate_files()
-        check_invalidation_complete()
+        # check_invalidation_complete()
             
         return eh.finish()
 
