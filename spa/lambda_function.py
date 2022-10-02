@@ -72,11 +72,7 @@ def lambda_handler(event, context):
         elif event.get("op") == "delete":
             eh.add_op("setup_s3")
             eh.add_op("remove_codebuild_project", {"create_and_remove": False, "name": codebuild_project_name})
-            print(prev_state)
-            print(prev_state.get("props"))
-            print(prev_state.get("rendef"))
             eh.add_props(prev_state.get("props", {}))
-            print(eh.props)
             if cdef.get("cloudfront"):
                 eh.add_op("setup_cloudfront_distribution")
                 if cdef.get("keep_bucket_private"):
@@ -127,7 +123,7 @@ def get_s3_etag(bucket, object_name):
 
 @ext(handler=eh, op="compare_defs")
 def compare_defs(event):
-    old_rendef = event.get("prev_state").get("rendef")
+    old_rendef = event.get("prev_state", {}).get("rendef")
     new_rendef = event.get("component_def")
 
     _ = old_rendef.pop("trust_level", None)
