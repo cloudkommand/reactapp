@@ -167,6 +167,7 @@ def compare_etags(event, bucket, object_name, trust_level):
                 eh.declare_return(200, 100, success=True)
             else: #Code
                 eh.add_log("Zipfile Unchanged, Skipping Build", {"initial_etag": initial_etag, "new_etag": new_etag})
+                eh.complete_op("setup_codebuild_project")
                 eh.add_props({
                     "codebuild_project_arn": old_props.get("codebuild_project_arn"),
                     "codebuild_project_name": old_props.get("codebuild_project_name"),
