@@ -85,7 +85,7 @@ def lambda_handler(event, context):
                 if cdef.get("keep_bucket_private"):
                     eh.add_op("setup_cloudfront_oai")
             if domain:
-                eh.add_op("setup_route53")
+                eh.add_op("setup_route53", domains)
 
         compare_defs(event)
         compare_etags(event, bucket, object_name, trust_level)
@@ -136,7 +136,7 @@ def get_s3_etag(bucket, object_name):
 
 @ext(handler=eh, op="compare_defs")
 def compare_defs(event):
-    old_rendef = event.get("prev_state", {}).get("rendef")
+    old_rendef = event.get("prev_state", {}).get("rendef", {})
     new_rendef = event.get("component_def")
 
     _ = old_rendef.pop("trust_level", None)
