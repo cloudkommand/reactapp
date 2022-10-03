@@ -75,7 +75,7 @@ def lambda_handler(event, context):
             if cdef.get("config"):
                 eh.add_op("add_config")
             if domain:
-                eh.add_op("setup_route53")
+                eh.add_op("setup_route53", domains)
 
         elif event.get("op") == "delete":
             eh.add_op("remove_codebuild_project", {"create_and_remove": False, "name": codebuild_project_name})
@@ -109,7 +109,7 @@ def lambda_handler(event, context):
             eh.add_op("setup_s3")
             setup_s3(cname, cdef, domain, index_document, error_document)
 
-        setup_route53(cname, cdef, domain, prev_state)
+        setup_route53(cdef, prev_state)
         remove_codebuild_project()
         invalidate_files()
         # check_invalidation_complete()
@@ -196,9 +196,11 @@ def get_codebuild_state(cname, cdef, codebuild_project_name, prev_state):
             eh.add_op("remove_codebuild_project", {"create_and_remove": True, "name": prev_codebuild_project_name})
 
 
-@ext(handler=eh, op="setup_route53")
-def setup_route53(cname, cdef, domain, prev_state):
+@ext(handler=eh, op="setup_route53", complete_op=False)
+def setup_route53(cdef, prev_state, i=1):
     print(f"props = {eh.props}")
+    available_domains = eh.ops["setup_route53"]
+    domain = available_domains.pop(0)
     if cdef.get("cloudfront"):
         component_def = {
             "domain": domain,
@@ -221,8 +223,14 @@ def setup_route53(cname, cdef, domain, prev_state):
         merge_props=False)
 
     if proceed:
-        eh.add_links({"Website URL": f'http://{eh.props["Route53"].get("domain")}'})
-    print(f"proceed = {proceed}")
+        link_name = f"Website URL {i}" if (i != 1) or available_domains else "Website URL"
+        eh.add_links({link_name: f'http://{eh.props["Route53"].get("domain")}'})
+        if available_domains:
+            eh.add_op("setup_route53", available_domains)
+            setup_route53(cdef, prev_state, i=i+1)
+        else:
+            eh.complete_op("setup_route53")
+
 
 @ext(handler=eh, op="setup_cloudfront_oai")
 def setup_cloudfront_oai(cdef):
@@ -240,12 +248,12 @@ def setup_cloudfront_oai(cdef):
     print(f"proceed = {proceed}")
 
 @ext(handler=eh, op="setup_cloudfront_distribution")
-def setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state):
+def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state):
     print(f"props = {eh.props}")
 
     S3 = eh.props.get("S3", {})
     component_def = remove_none_attributes({
-        "aliases": [domain],
+        "aliases": domains,
         "target_s3_bucket": S3.get("name"),
         "default_root_object": index_document,
         "oai_id": eh.props.get("OAI", {}).get("id"),
@@ -276,7 +284,7 @@ def setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_stat
     print(f"proceed = {proceed}")
         
 @ext(handler=eh, op="setup_s3")
-def setup_s3(cname, cdef, domain, index_document, error_document):
+def setup_s3(cname, cdef, domains, index_document, error_document):
     # l_client = boto3.client('lambda')
 
     website_configuration = None
@@ -327,7 +335,7 @@ def setup_s3(cname, cdef, domain, index_document, error_document):
     function_arn = lambda_env('s3_extension_arn')
     component_def = remove_none_attributes({
         # "CORS": True,
-        "name": domain,
+        "name": domains[0],
         "website_configuration": website_configuration,
         "bucket_policy": bucket_policy,
         "block_public_access": block_public_access,
