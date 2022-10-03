@@ -105,7 +105,7 @@ def lambda_handler(event, context):
         setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state)
         
         #Have to do it after CF distribution is gone
-        if event["op"] == "delete" and not eh.ops.get("setup_cloudfront_distribution"):
+        if event["op"] == "delete" and not eh.ops.get("setup_cloudfront_distribution") and not eh.state.get("completed_s3"):
             eh.add_op("setup_s3")
             setup_s3(cname, cdef, domain, index_document, error_document)
 
@@ -340,6 +340,9 @@ def setup_s3(cname, cdef, domain, index_document, error_document):
         child_key="S3", progress_start=20, progress_end=50,
         merge_props=False)
     print(f"proceed = {proceed}")
+
+    if proceed:
+        eh.add_state({"completed_s3": True})
 
 
 @ext(handler=eh, op="add_config")
