@@ -74,7 +74,7 @@ def lambda_handler(event, context):
                     eh.add_op("setup_cloudfront_oai")
             if cdef.get("config"):
                 eh.add_op("add_config")
-            if domain:
+            if domains:
                 eh.add_op("setup_route53", domains)
 
         elif event.get("op") == "delete":
@@ -84,7 +84,7 @@ def lambda_handler(event, context):
                 eh.add_op("setup_cloudfront_distribution")
                 if cdef.get("keep_bucket_private"):
                     eh.add_op("setup_cloudfront_oai")
-            if domain:
+            if domains:
                 eh.add_op("setup_route53", domains)
 
         compare_defs(event)
