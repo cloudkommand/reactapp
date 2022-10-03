@@ -175,6 +175,7 @@ def compare_etags(event, bucket, object_name, trust_level):
                 })
 
         else:
+            eh.add_props({"initial_etag": new_etag})
             eh.add_log("Code Changed, Deploying", {"old_etag": initial_etag, "new_etag": new_etag})
 
 @ext(handler=eh, op="load_initial_props")
