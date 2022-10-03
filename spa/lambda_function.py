@@ -200,7 +200,7 @@ def get_codebuild_state(cname, cdef, codebuild_project_name, prev_state):
 def setup_route53(cdef, prev_state, i=1):
     print(f"props = {eh.props}")
     available_domains = eh.ops["setup_route53"]
-    domain = available_domains.pop(0)
+    domain = available_domains[0]
     if cdef.get("cloudfront"):
         component_def = {
             "domain": domain,
@@ -225,6 +225,7 @@ def setup_route53(cdef, prev_state, i=1):
     if proceed:
         link_name = f"Website URL {i}" if (i != 1) or available_domains else "Website URL"
         eh.add_links({link_name: f'http://{eh.props["Route53"].get("domain")}'})
+        _ = available_domains.pop(0)
         if available_domains:
             eh.add_op("setup_route53", available_domains)
             setup_route53(cdef, prev_state, i=i+1)
