@@ -166,6 +166,7 @@ class ExtensionHandler:
         self.refresh()
         if event.get("pass_back_data"):
             self.declare_pass_back_data(event["pass_back_data"])
+        self.prev_state = event.get("prev_state", {})
         self.project_code = event.get("project_code")
         self.repo_id = event.get("repo_id")
         self.bucket = event.get("bucket")
@@ -239,7 +240,7 @@ class ExtensionHandler:
             "op": op,
             "s3_object_name": object_name,
             "pass_back_data": self.children.get(child_key),
-            "prev_state": {"props": self.props.get(child_key)} if self.props.get(child_key) else None,
+            "prev_state": {"props": self.prev_state.get("props", {}).get(child_key, {})},
             "bucket": self.bucket,
             "repo_id": self.repo_id,
             "project_code": self.project_code

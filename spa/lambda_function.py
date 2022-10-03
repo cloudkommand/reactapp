@@ -45,9 +45,10 @@ def lambda_handler(event, context):
         # s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
-        if cdef.get("cloudfront") and not domain:
-            eh.add_log("Cloudfront requires a domain", {"cdef": cdef}, True)
-            eh.perm_error("Cloudfront requires a domain", 0)
+        domains = cdef.get("domains") or [domain]
+        if cdef.get("cloudfront") and not domains:
+            eh.add_log("Cloudfront requires at least one domain", {"cdef": cdef}, True)
+            eh.perm_error("Cloudfront requires at least one domain", 0)
 
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
@@ -70,7 +71,6 @@ def lambda_handler(event, context):
                 eh.add_op("setup_route53")
 
         elif event.get("op") == "delete":
-            eh.add_op("setup_s3")
             eh.add_op("remove_codebuild_project", {"create_and_remove": False, "name": codebuild_project_name})
             eh.add_props(prev_state.get("props", {}))
             if cdef.get("cloudfront"):
@@ -96,6 +96,12 @@ def lambda_handler(event, context):
         check_build_complete(bucket)
         set_object_metadata(cdef, index_document, error_document, region, domain)
         setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state)
+        
+        #Have to do it after CF distribution is gone
+        if event["op"] == "delete":
+            eh.add_op("setup_s3")
+            setup_s3(cname, cdef, domain, index_document, error_document)
+
         setup_route53(cname, cdef, domain, prev_state)
         remove_codebuild_project()
         invalidate_files()
