@@ -102,12 +102,12 @@ def lambda_handler(event, context):
         start_build(codebuild_project_name)
         check_build_complete(bucket)
         set_object_metadata(cdef, index_document, error_document, region, domain)
-        setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state)
+        setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state)
         
         #Have to do it after CF distribution is gone
         if event["op"] == "delete":
             eh.add_op("setup_s3")
-            setup_s3(cname, cdef, domain, index_document, error_document)
+            setup_s3(cname, cdef, domains, index_document, error_document)
 
         setup_route53(cdef, prev_state)
         remove_codebuild_project()
