@@ -97,7 +97,7 @@ def lambda_handler(event, context):
         add_config(bucket, object_name, cdef.get("config"))
         # put_object(bucket, object_name, s3_build_object_name)
         setup_cloudfront_oai(cdef)
-        setup_s3(cname, cdef, domain, index_document, error_document)
+        setup_s3(cname, cdef, domains, index_document, error_document)
         setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
