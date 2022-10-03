@@ -32,6 +32,8 @@ def lambda_handler(event, context):
         repo_id = event.get("repo_id")
         cdef = event.get("component_def")
         cname = event.get("component_name")
+        trust_level = cdef.get("trust_level") or "code"
+
         role_arn = lambda_env("codebuild_role_arn")
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
         codebuild_runtime_versions = cdef.get("codebuild_runtime_versions") or {"nodejs": 10} # assume dictionary with this format
@@ -56,6 +58,11 @@ def lambda_handler(event, context):
         if event.get("pass_back_data"):
             print(f"pass_back_data found")
         elif event.get("op") == "upsert":
+            if trust_level in ["full", "code"]:
+                eh.add_op("compare_defs")
+            else: #In case we want to change the trust level later
+                eh.add_op("load_initial_props")
+            
             eh.add_op("get_codebuild_state")
             eh.add_op("setup_s3")
             eh.add_op("setup_status_objects")
@@ -81,7 +88,7 @@ def lambda_handler(event, context):
                 eh.add_op("setup_route53")
 
         compare_defs(event)
-        compare_etags(event, bucket, object_name)
+        compare_etags(event, bucket, object_name, trust_level)
 
         load_initial_props(bucket, object_name)
 
@@ -142,7 +149,7 @@ def compare_defs(event):
         eh.add_log("Definitions Don't Match, Deploying", {"old": old_rendef, "new": new_rendef})
 
 @ext(handler=eh, op="compare_etags")
-def compare_etags(event, bucket, object_name):
+def compare_etags(event, bucket, object_name, trust_level):
     old_props = event.get("prev_state", {}).get("props", {})
 
     initial_etag = old_props.get("initial_etag")
@@ -152,11 +159,19 @@ def compare_etags(event, bucket, object_name):
     if eh.state.get("zip_etag"):
         new_etag = eh.state["zip_etag"]
         if initial_etag == new_etag:
-            eh.add_log("Elevated Trust: No Change Detected", {"initial_etag": initial_etag, "new_etag": new_etag})
-            eh.add_props(old_props)
-            eh.add_links(event.get("prev_state", {}).get("links", {}))
-            eh.add_state(event.get("prev_state", {}).get("state", {}))
-            eh.declare_return(200, 100, success=True)
+            if trust_level == "full":
+                eh.add_log("Elevated Trust: No Change Detected", {"initial_etag": initial_etag, "new_etag": new_etag})
+                eh.add_props(old_props)
+                eh.add_links(event.get("prev_state", {}).get("links", {}))
+                eh.add_state(event.get("prev_state", {}).get("state", {}))
+                eh.declare_return(200, 100, success=True)
+            else: #Code
+                eh.add_log("Zipfile Unchanged, Skipping Build", {"initial_etag": initial_etag, "new_etag": new_etag})
+                eh.add_props({
+                    "codebuild_project_arn": old_props.get("codebuild_project_arn"),
+                    "codebuild_project_name": old_props.get("codebuild_project_name"),
+                    "hash": old_props.get("hash"),
+                })
 
         else:
             eh.add_log("Code Changed, Deploying", {"old_etag": initial_etag, "new_etag": new_etag})
