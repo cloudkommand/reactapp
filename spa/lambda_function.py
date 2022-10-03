@@ -105,7 +105,7 @@ def lambda_handler(event, context):
         setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state)
         
         #Have to do it after CF distribution is gone
-        if event["op"] == "delete":
+        if event["op"] == "delete" and not eh.ops.get("setup_cloudfront_distribution"):
             eh.add_op("setup_s3")
             setup_s3(cname, cdef, domain, index_document, error_document)
 
@@ -158,6 +158,7 @@ def compare_etags(event, bucket, object_name, trust_level):
     get_s3_etag(bucket, object_name)
     if eh.state.get("zip_etag"):
         new_etag = eh.state["zip_etag"]
+        eh.add_props({"initial_etag": new_etag})
         if initial_etag == new_etag:
             if trust_level == "full":
                 eh.add_log("Elevated Trust: No Change Detected", {"initial_etag": initial_etag, "new_etag": new_etag})
@@ -175,7 +176,6 @@ def compare_etags(event, bucket, object_name, trust_level):
                 })
 
         else:
-            eh.add_props({"initial_etag": new_etag})
             eh.add_log("Code Changed, Deploying", {"old_etag": initial_etag, "new_etag": new_etag})
 
 @ext(handler=eh, op="load_initial_props")
