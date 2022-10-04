@@ -16,6 +16,8 @@ eh = ExtensionHandler()
 SUCCESS_FILE = "reactspapresets/success.json"
 ERROR_FILE = "reactspapresets/error.json"
 
+SOLO_KEY = "broski2"
+
 cloudfront = boto3.client("cloudfront")
 
 def lambda_handler(event, context):
@@ -47,10 +49,13 @@ def lambda_handler(event, context):
         # s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
-        domains = cdef.get("domains") or ([domain] if domain else None)
+        domains = cdef.get("domains") or ({SOLO_KEY: domain} if domain else None)
         if cdef.get("cloudfront") and not domains:
             eh.add_log("Cloudfront requires at least one domain", {"cdef": cdef}, True)
             eh.perm_error("Cloudfront requires at least one domain", 0)
+        if len(domains.keys()) > 1 and not cdef.get("cloudfront"):
+            eh.add_log("Multiple domains requires cloudfront", {"cdef": cdef}, True)
+            eh.perm_error("Multiple domains requires cloudfront", 0)
 
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
@@ -97,7 +102,7 @@ def lambda_handler(event, context):
         add_config(bucket, object_name, cdef.get("config"))
         # put_object(bucket, object_name, s3_build_object_name)
         setup_cloudfront_oai(cdef)
-        setup_s3(cname, cdef, domains, index_document, error_document)
+        setup_s3(cname, cdef, domains, index_document, error_document, prev_state)
         setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
@@ -107,7 +112,7 @@ def lambda_handler(event, context):
         #Have to do it after CF distribution is gone
         if event["op"] == "delete" and not eh.ops.get("setup_cloudfront_distribution") and not eh.state.get("completed_s3"):
             eh.add_op("setup_s3")
-            setup_s3(cname, cdef, domains, index_document, error_document)
+            setup_s3(cname, cdef, domains, index_document, error_document, prev_state)
 
         setup_route53(cdef, prev_state)
         remove_codebuild_project()
@@ -203,7 +208,8 @@ def get_codebuild_state(cname, cdef, codebuild_project_name, prev_state):
 def setup_route53(cdef, prev_state, i=1):
     print(f"props = {eh.props}")
     available_domains = eh.ops["setup_route53"]
-    domain = available_domains[0]
+    domain_key = list(available_domains.keys())[0]
+    domain = available_domains[domain_key]
     if cdef.get("cloudfront"):
         component_def = {
             "domain": domain,
@@ -220,7 +226,7 @@ def setup_route53(cdef, prev_state, i=1):
 
     function_arn = lambda_env('route53_extension_arn')
     
-    child_key = f"Route53 {i}"
+    child_key = f"Route53_{domain_key}"
 
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
@@ -228,9 +234,9 @@ def setup_route53(cdef, prev_state, i=1):
     )
 
     if proceed:
-        link_name = f"Website URL {i}" if (i != 1) or available_domains else "Website URL"
+        link_name = f"Website URL {i}" if (i != 1) or (len(available_domains.keys()) > 1) else "Website URL"
         eh.add_links({link_name: f'http://{eh.props[child_key].get("domain")}'})
-        _ = available_domains.pop(0)
+        _ = available_domains.pop(domain_key)
         if available_domains:
             eh.add_op("setup_route53", available_domains)
             setup_route53(cdef, prev_state, i=i+1)
@@ -259,7 +265,7 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
 
     S3 = eh.props.get("S3", {})
     component_def = remove_none_attributes({
-        "aliases": domains,
+        "aliases": list(domains.values()),
         "target_s3_bucket": S3.get("name"),
         "default_root_object": index_document,
         "oai_id": eh.props.get("OAI", {}).get("id"),
@@ -290,7 +296,7 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
     print(f"proceed = {proceed}")
         
 @ext(handler=eh, op="setup_s3")
-def setup_s3(cname, cdef, domains, index_document, error_document):
+def setup_s3(cname, cdef, domains, index_document, error_document, prev_state):
     # l_client = boto3.client('lambda')
 
     website_configuration = None
@@ -339,9 +345,12 @@ def setup_s3(cname, cdef, domains, index_document, error_document):
         }
 
     function_arn = lambda_env('s3_extension_arn')
+    bucket_name = prev_state.get("props", {}).get("S3", {}).get("name") or \
+        domains[list(domains.keys())[0]] if domains else None
+
     component_def = remove_none_attributes({
         # "CORS": True,
-        "name": domains[0] if domains else None,
+        "name": bucket_name,
         "website_configuration": website_configuration,
         "bucket_policy": bucket_policy,
         "block_public_access": block_public_access,
