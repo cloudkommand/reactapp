@@ -219,8 +219,8 @@ def setup_route53(cdef, prev_state, i=1):
 
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
-        child_key="Route53", progress_start=85, progress_end=100,
-        merge_props=False)
+        child_key=f"Route53 {i}", progress_start=85, progress_end=100
+    )
 
     if proceed:
         link_name = f"Website URL {i}" if (i != 1) or available_domains else "Website URL"
