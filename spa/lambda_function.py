@@ -216,15 +216,17 @@ def setup_route53(cdef, prev_state, i=1):
         }
 
     function_arn = lambda_env('route53_extension_arn')
+    
+    child_key = f"Route53 {i}"
 
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
-        child_key=f"Route53 {i}", progress_start=85, progress_end=100
+        child_key=child_key, progress_start=85, progress_end=100
     )
 
     if proceed:
         link_name = f"Website URL {i}" if (i != 1) or available_domains else "Website URL"
-        eh.add_links({link_name: f'http://{eh.props["Route53"].get("domain")}'})
+        eh.add_links({link_name: f'http://{eh.props[child_key].get("domain")}'})
         _ = available_domains.pop(0)
         if available_domains:
             eh.add_op("setup_route53", available_domains)
