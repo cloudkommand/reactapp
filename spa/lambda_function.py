@@ -174,6 +174,9 @@ def compare_etags(event, bucket, object_name, trust_level):
                     "codebuild_project_name": old_props.get("codebuild_project_name"),
                     "hash": old_props.get("hash"),
                 })
+                eh.add_links({
+                    "Codebuild Project": gen_codebuild_link(old_props.get("codebuild_project_name"))
+                })
 
         else:
             eh.add_log("Code Changed, Deploying", {"old_etag": initial_etag, "new_etag": new_etag})
