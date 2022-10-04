@@ -55,7 +55,9 @@
                         "codebuild:CreateProject",
                         "codebuild:UpdateProject",
                         "codebuild:DeleteProject",
-                        "codebuild:StartBuild"
+                        "codebuild:StartBuild",
+                        "cloudfront:CreateInvalidation",
+                        "cloudfront:GetInvalidation"
                     ],
                     "Resource": "*"
                 }]

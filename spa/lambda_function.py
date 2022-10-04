@@ -10,11 +10,15 @@ from botocore.exceptions import ClientError
 
 from extutil import remove_none_attributes, account_context, ExtensionHandler, ext, \
     current_epoch_time_usec_num, component_safe_name, lambda_env, random_id, \
-    handle_common_errors
+    handle_common_errors, create_zip
 
 eh = ExtensionHandler()
 SUCCESS_FILE = "reactspapresets/success.json"
 ERROR_FILE = "reactspapresets/error.json"
+
+SOLO_KEY = "broski2"
+
+cloudfront = boto3.client("cloudfront")
 
 def lambda_handler(event, context):
     try:
@@ -30,18 +34,31 @@ def lambda_handler(event, context):
         repo_id = event.get("repo_id")
         cdef = event.get("component_def")
         cname = event.get("component_name")
+        trust_level = cdef.get("trust_level") or "code"
+
         role_arn = lambda_env("codebuild_role_arn")
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
         codebuild_runtime_versions = cdef.get("codebuild_runtime_versions") or {"nodejs": 10} # assume dictionary with this format
         codebuild_install_commands = cdef.get("codebuild_install_commands") or None
+        
+        caller_reference = str(current_epoch_time_usec_num())
+        if not eh.state.get("caller_reference"):
+            eh.add_state({"caller_reference": caller_reference})
 
         build_container_size = cdef.get("build_container_size")
         # s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
-        if cdef.get("cloudfront") and not domain:
-            eh.add_log("Cloudfront requires a domain", {"cdef": cdef}, True)
-            eh.perm_error("Cloudfront requires a domain", 0)
+        domains = cdef.get("domains") or ({SOLO_KEY: domain} if domain else None)
+        if domains and not isinstance(domains, dict):
+            eh.add_log("domains must be a dictionary", {"domains": domains})
+            eh.perm_error("Invalid Domains", 0)
+        if cdef.get("cloudfront") and not domains:
+            eh.add_log("Cloudfront requires at least one domain", {"cdef": cdef}, True)
+            eh.perm_error("Cloudfront requires at least one domain", 0)
+        if domains and len(domains.keys()) > 1 and not cdef.get("cloudfront"):
+            eh.add_log("Multiple domains requires cloudfront", {"cdef": cdef}, True)
+            eh.perm_error("Multiple domains requires cloudfront", 0)
 
         index_document = cdef.get("index_document") or "index.html"
         error_document = cdef.get("error_document") or "index.html"
@@ -49,47 +66,61 @@ def lambda_handler(event, context):
         if event.get("pass_back_data"):
             print(f"pass_back_data found")
         elif event.get("op") == "upsert":
-            eh.add_op("get_state")
+            if trust_level in ["full", "code"]:
+                eh.add_op("compare_defs")
+            else: #In case we want to change the trust level later
+                eh.add_op("load_initial_props")
+            
+            eh.add_op("get_codebuild_state")
             eh.add_op("setup_s3")
             eh.add_op("setup_status_objects")
             eh.add_op("put_object")
             if cdef.get("cloudfront"):
                 eh.add_op("setup_cloudfront_distribution")
+                eh.add_op("invalidate_files")
                 if cdef.get("keep_bucket_private"):
                     eh.add_op("setup_cloudfront_oai")
             if cdef.get("config"):
                 eh.add_op("add_config")
-            if domain:
-                eh.add_op("setup_route53")
+            if domains:
+                eh.add_op("setup_route53", domains)
 
         elif event.get("op") == "delete":
-            eh.add_op("setup_s3")
             eh.add_op("remove_codebuild_project", {"create_and_remove": False, "name": codebuild_project_name})
-            print(prev_state)
-            print(prev_state.get("props"))
-            print(prev_state.get("rendef"))
             eh.add_props(prev_state.get("props", {}))
-            print(eh.props)
             if cdef.get("cloudfront"):
                 eh.add_op("setup_cloudfront_distribution")
                 if cdef.get("keep_bucket_private"):
                     eh.add_op("setup_cloudfront_oai")
-            if domain:
-                eh.add_op("setup_route53")
+            if domains:
+                eh.add_op("setup_route53", domains)
 
-        get_state(cname, cdef, codebuild_project_name, prev_state)
+        compare_defs(event)
+        compare_etags(event, bucket, object_name, trust_level)
+
+        load_initial_props(bucket, object_name)
+
+        get_codebuild_state(cname, cdef, codebuild_project_name, prev_state)
         setup_status_objects(bucket)
         add_config(bucket, object_name, cdef.get("config"))
         # put_object(bucket, object_name, s3_build_object_name)
         setup_cloudfront_oai(cdef)
-        setup_s3(cname, cdef, domain, index_document, error_document)
+        setup_s3(cname, cdef, domains, index_document, error_document, prev_state)
         setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
         set_object_metadata(cdef, index_document, error_document, region, domain)
-        setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state)
-        setup_route53(cname, cdef, domain, prev_state)
+        setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state)
+        
+        #Have to do it after CF distribution is gone
+        if event["op"] == "delete" and not eh.ops.get("setup_cloudfront_distribution") and not eh.state.get("completed_s3"):
+            eh.add_op("setup_s3")
+            setup_s3(cname, cdef, domains, index_document, error_document, prev_state)
+
+        setup_route53(cdef, prev_state)
         remove_codebuild_project()
+        invalidate_files()
+        # check_invalidation_complete()
             
         return eh.finish()
 
@@ -100,10 +131,75 @@ def lambda_handler(event, context):
         eh.declare_return(200, 0, error_code=str(e))
         return eh.finish()
 
+def get_s3_etag(bucket, object_name):
+    s3 = boto3.client("s3")
+
+    try:
+        s3_metadata = s3.head_object(Bucket=bucket, Key=object_name)
+        print(f"s3_metadata = {s3_metadata}")
+        eh.add_state({"zip_etag": s3_metadata['ETag']})
+    except s3.exceptions.NoSuchKey:
+        eh.add_log("Cound Not Find Zipfile", {"bucket": bucket, "key": object_name})
+        eh.retry_error("Object Not Found")
+
+@ext(handler=eh, op="compare_defs")
+def compare_defs(event):
+    old_rendef = event.get("prev_state", {}).get("rendef", {})
+    new_rendef = event.get("component_def")
+
+    _ = old_rendef.pop("trust_level", None)
+    _ = new_rendef.pop("trust_level", None)
+
+    if old_rendef == new_rendef:
+        eh.add_op("compare_etags")
+
+    else:
+        eh.add_op("load_initial_props")
+        eh.add_log("Definitions Don't Match, Deploying", {"old": old_rendef, "new": new_rendef})
+
+@ext(handler=eh, op="compare_etags")
+def compare_etags(event, bucket, object_name, trust_level):
+    old_props = event.get("prev_state", {}).get("props", {})
+
+    initial_etag = old_props.get("initial_etag")
+
+    #Get new etag
+    get_s3_etag(bucket, object_name)
+    if eh.state.get("zip_etag"):
+        new_etag = eh.state["zip_etag"]
+        eh.add_props({"initial_etag": new_etag})
+        if initial_etag == new_etag:
+            if trust_level == "full":
+                eh.add_log("Elevated Trust: No Change Detected", {"initial_etag": initial_etag, "new_etag": new_etag})
+                eh.add_props(old_props)
+                eh.add_links(event.get("prev_state", {}).get("links", {}))
+                eh.add_state(event.get("prev_state", {}).get("state", {}))
+                eh.declare_return(200, 100, success=True)
+            else: #Code
+                eh.add_log("Zipfile Unchanged, Skipping Build", {"initial_etag": initial_etag, "new_etag": new_etag})
+                eh.complete_op("get_codebuild_state")
+                eh.add_props({
+                    "codebuild_project_arn": old_props.get("codebuild_project_arn"),
+                    "codebuild_project_name": old_props.get("codebuild_project_name"),
+                    "hash": old_props.get("hash"),
+                })
+                eh.add_links({
+                    "Codebuild Project": gen_codebuild_link(old_props.get("codebuild_project_name"))
+                })
+
+        else:
+            eh.add_log("Code Changed, Deploying", {"old_etag": initial_etag, "new_etag": new_etag})
+
+@ext(handler=eh, op="load_initial_props")
+def load_initial_props(bucket, object_name):
+    get_s3_etag(bucket, object_name)
+    if eh.state.get("zip_etag"):
+        eh.add_props({"initial_etag": eh.state.get("zip_etag")})
+
 # def format_tags(tags_dict):
 #     return [{"Key": k, "Value": v} for k,v in tags_dict]
-@ext(handler=eh, op="get_state")
-def get_state(cname, cdef, codebuild_project_name, prev_state):
+@ext(handler=eh, op="get_codebuild_state")
+def get_codebuild_state(cname, cdef, codebuild_project_name, prev_state):
     eh.add_op("setup_codebuild_project")
     
     if prev_state and prev_state.get("props") and prev_state.get("props").get("codebuild_project_name"):
@@ -112,9 +208,12 @@ def get_state(cname, cdef, codebuild_project_name, prev_state):
             eh.add_op("remove_codebuild_project", {"create_and_remove": True, "name": prev_codebuild_project_name})
 
 
-@ext(handler=eh, op="setup_route53")
-def setup_route53(cname, cdef, domain, prev_state):
+@ext(handler=eh, op="setup_route53", complete_op=False)
+def setup_route53(cdef, prev_state, i=1):
     print(f"props = {eh.props}")
+    available_domains = eh.ops["setup_route53"]
+    domain_key = list(available_domains.keys())[0]
+    domain = available_domains[domain_key]
     if cdef.get("cloudfront"):
         component_def = {
             "domain": domain,
@@ -130,15 +229,24 @@ def setup_route53(cname, cdef, domain, prev_state):
         }
 
     function_arn = lambda_env('route53_extension_arn')
+    
+    child_key = f"Route53_{domain_key}"
 
     proceed = eh.invoke_extension(
-        arn=function_arn, component_def=component_def, 
-        child_key="Route53", progress_start=85, progress_end=100,
-        merge_props=False)
+        arn=function_arn, component_def=component_def, links_prefix=f"{domain_key} ",
+        child_key=child_key, progress_start=85, progress_end=100
+    )
 
     if proceed:
-        eh.add_links({"Website URL": f'http://{eh.props["Route53"].get("domain")}'})
-    print(f"proceed = {proceed}")
+        link_name = f"{domain_key} Website URL" if (i != 1) or (len(list(available_domains.keys())) > 1) else "Website URL"
+        eh.add_links({link_name: f'http://{eh.props[child_key].get("domain")}'})
+        _ = available_domains.pop(domain_key)
+        if available_domains:
+            eh.add_op("setup_route53", available_domains)
+            setup_route53(cdef, prev_state, i=i+1)
+        else:
+            eh.complete_op("setup_route53")
+
 
 @ext(handler=eh, op="setup_cloudfront_oai")
 def setup_cloudfront_oai(cdef):
@@ -156,12 +264,12 @@ def setup_cloudfront_oai(cdef):
     print(f"proceed = {proceed}")
 
 @ext(handler=eh, op="setup_cloudfront_distribution")
-def setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_state):
+def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state):
     print(f"props = {eh.props}")
 
     S3 = eh.props.get("S3", {})
     component_def = remove_none_attributes({
-        "aliases": [domain],
+        "aliases": list(domains.values()),
         "target_s3_bucket": S3.get("name"),
         "default_root_object": index_document,
         "oai_id": eh.props.get("OAI", {}).get("id"),
@@ -190,10 +298,9 @@ def setup_cloudfront_distribution(cname, cdef, domain, index_document, prev_stat
         child_key="Distribution", progress_start=85, progress_end=100,
         merge_props=False)
     print(f"proceed = {proceed}")
-
-
+        
 @ext(handler=eh, op="setup_s3")
-def setup_s3(cname, cdef, domain, index_document, error_document):
+def setup_s3(cname, cdef, domains, index_document, error_document, prev_state):
     # l_client = boto3.client('lambda')
 
     website_configuration = None
@@ -242,9 +349,12 @@ def setup_s3(cname, cdef, domain, index_document, error_document):
         }
 
     function_arn = lambda_env('s3_extension_arn')
+    bucket_name = prev_state.get("props", {}).get("S3", {}).get("name") or \
+        domains[list(domains.keys())[0]] if domains else None
+
     component_def = remove_none_attributes({
         # "CORS": True,
-        "name": domain,
+        "name": bucket_name,
         "website_configuration": website_configuration,
         "bucket_policy": bucket_policy,
         "block_public_access": block_public_access,
@@ -257,6 +367,9 @@ def setup_s3(cname, cdef, domain, index_document, error_document):
         child_key="S3", progress_start=20, progress_end=50,
         merge_props=False)
     print(f"proceed = {proceed}")
+
+    if proceed:
+        eh.add_state({"completed_s3": True})
 
 
 @ext(handler=eh, op="add_config")
@@ -377,19 +490,32 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_c
     #     ])
 
     if build_container_size:
-        if (build_container_size.lower() == "small") or (build_container_size == 1):
-            build_container_size = "BUILD_GENERAL1_SMALL"
-        elif (build_container_size.lower() == "medium") or (build_container_size == 2):
-            build_container_size = "BUILD_GENERAL1_MEDIUM"
-        elif (build_container_size.lower() == "large") or (build_container_size == 3):
-            build_container_size = "BUILD_GENERAL1_LARGE"
-        elif (build_container_size.lower() == "2xlarge") or (build_container_size.lower() == "xxlarge") or (build_container_size == 4):
-            build_container_size = "BUILD_GENERAL1_2XLARGE"
-        elif build_container_size in ["BUILD_GENERAL1_SMALL", "BUILD_GENERAL1_MEDIUM", "BUILD_GENERAL1_LARGE", "BUILD_GENERAL1_2XLARGE"]:
-            pass
+        if isinstance(build_container_size, str):
+            if build_container_size.lower() == "small":
+                build_container_size = "BUILD_GENERAL1_SMALL"
+            elif build_container_size.lower() == "medium":
+                build_container_size = "BUILD_GENERAL1_MEDIUM"
+            elif build_container_size.lower() == "large":
+                build_container_size = "BUILD_GENERAL1_LARGE"
+            elif (build_container_size.lower() == "2xlarge") or (build_container_size.lower() == "xxlarge"):
+                build_container_size = "BUILD_GENERAL1_2XLARGE"
+            elif build_container_size in ["BUILD_GENERAL1_SMALL", "BUILD_GENERAL1_MEDIUM", "BUILD_GENERAL1_LARGE", "BUILD_GENERAL1_2XLARGE"]:
+                pass
+            else:
+                eh.add_log("Invalid build_container_size, using MEDIUM", {"build_container_size": build_container_size})
+                build_container_size = "BUILD_GENERAL1_MEDIUM"
         else:
-            eh.add_log("Invalid build_container_size, using MEDIUM", {"build_container_size": build_container_size})
-            build_container_size = "BUILD_GENERAL1_MEDIUM"
+            if build_container_size == 1:
+                build_container_size = "BUILD_GENERAL1_SMALL"
+            elif build_container_size == 2:
+                build_container_size = "BUILD_GENERAL1_MEDIUM"
+            elif build_container_size == 3:
+                build_container_size = "BUILD_GENERAL1_LARGE"
+            elif build_container_size == 4:
+                build_container_size = "BUILD_GENERAL1_2XLARGE"
+            else:
+                eh.add_log("Invalid build_container_size, using MEDIUM", {"build_container_size": build_container_size})
+                build_container_size = "BUILD_GENERAL1_MEDIUM"
     else:
         build_container_size = "BUILD_GENERAL1_MEDIUM"
 
@@ -479,16 +605,6 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_c
                 eh.add_op("start_build")
                 eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
                 
-                # else:
-                #     eh.add_log("No Need to Update Project", {"name": codebuild_project_name})
-                #     eh.add_props({
-                #         "codebuild_project_arn": prev_state.get("props", {}).get("codebuild_project_arn"),
-                #         "codebuild_project_name": prev_state.get("props", {}).get("codebuild_project_name"),
-                #         "hash": json.dumps(params, sort_keys=True)
-                #     })
-                #     eh.add_op("start_build")
-                #     eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
-
             except botocore.exceptions.ClientError as e:
                 if e.response['Error']['Code'] == "InvalidInputException":
                     eh.add_log("Invalid Codebuild Input", {"error": str(e)}, True)
@@ -641,22 +757,60 @@ def set_object_metadata(cdef, index_document, error_document, region, domain):
         eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
         eh.retry_error(str(e), 95 if not domain else 85)
 
+#Note that invalidate files and checking for it should really be its own plugin.
+@ext(handler=eh, op="invalidate_files")
+def invalidate_files():
+    distribution_id = eh.props['Distribution']['id']
+
+    try:
+        response = cloudfront.create_invalidation(
+            DistributionId=distribution_id,
+            InvalidationBatch={
+                'Paths': {
+                    'Quantity': 1,
+                    'Items': ['/*']
+                },
+                'CallerReference': eh.state["caller_reference"]
+            }
+        )
+        
+        invalidation = response.get("Invalidation")
+        if invalidation.get("Status") != "Completed":
+            # eh.add_op("check_invalidation_complete", invalidation.get("Id"))
+            eh.add_log("Initiated Cloudfront File Reset", response)
+        else:
+            eh.add_log("Cloudfront File Reset Complete", response)
+
+    except botocore.exceptions.ClientError as e:
+        handle_common_errors(e, eh, "Resetting Cloudfront Files Error", 97)
+
+# @ext(handler=eh, op="check_invalidation_complete")
+# def check_invalidation_complete():
+#     distribution_id = eh.props['Distribution']['id']
+#     invalidation_id = eh.ops['check_invalidation_complete']
+
+#     try:
+#         response = cloudfront.get_invalidation(
+#             DistributionId=distribution_id,
+#             Id=invalidation_id
+#         )
+        
+#         invalidation = response.get("Invalidation")
+#         if invalidation.get("Status") != "Completed":
+#             eh.add_log("Cloudfront Files Not Yet Reset", response)
+#             eh.retry_error(str(current_epoch_time_usec_num()), progress=98, callback_sec=7)
+#         else:
+#             eh.add_log("Cloudfront Files Have Reset", response)
+
+#     except botocore.exceptions.ClientError as e:
+#         handle_common_errors(e, eh, "Check Cloudfront Reset Error", 98)
+
 # http://ck-azra-web-bucket.s3-website-us-east-1.amazonaws.com/login 
 def gen_s3_url(bucket_name, s3_url_path, region):
     return f'http://{bucket_name}.s3-website-{region}.amazonaws.com{s3_url_path if s3_url_path != "/" else ""}'
 
 def gen_codebuild_link(codebuild_project_name):
     return f"https://console.aws.amazon.com/codesuite/codebuild/projects/{codebuild_project_name}"
-
-def create_zip(file_name, path):
-    ziph=zipfile.ZipFile(file_name, 'w', zipfile.ZIP_DEFLATED)
-    # ziph is zipfile handle
-    for root, dirs, files in os.walk(path):
-        for file in files:
-            ziph.write(os.path.join(root, file), 
-                       os.path.relpath(os.path.join(root, file), 
-                                       os.path.join(path, '')))
-    ziph.close()
 
 def form_domain(bucket, base_domain):
     if bucket and base_domain:
