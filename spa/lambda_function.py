@@ -341,7 +341,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document):
     function_arn = lambda_env('s3_extension_arn')
     component_def = remove_none_attributes({
         # "CORS": True,
-        "name": domains[0],
+        "name": domains[0] if domains else None,
         "website_configuration": website_configuration,
         "bucket_policy": bucket_policy,
         "block_public_access": block_public_access,
