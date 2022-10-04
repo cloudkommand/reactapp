@@ -47,7 +47,7 @@ def lambda_handler(event, context):
         # s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
-        domains = cdef.get("domains") or [domain]
+        domains = cdef.get("domains") or [domain] if domain else None
         if cdef.get("cloudfront") and not domains:
             eh.add_log("Cloudfront requires at least one domain", {"cdef": cdef}, True)
             eh.perm_error("Cloudfront requires at least one domain", 0)
