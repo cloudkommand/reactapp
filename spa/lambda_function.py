@@ -232,12 +232,12 @@ def setup_route53(cdef, prev_state, i=1):
     child_key = f"Route53_{domain_key}"
 
     proceed = eh.invoke_extension(
-        arn=function_arn, component_def=component_def, 
+        arn=function_arn, component_def=component_def, links_prefix=f"{domain_key} ",
         child_key=child_key, progress_start=85, progress_end=100
     )
 
     if proceed:
-        link_name = f"Website URL {i}" if (i != 1) or (len(available_domains.keys()) > 1) else "Website URL"
+        link_name = f"{domain_key} Website URL" if (i != 1) or (len(list(available_domains.keys())) > 1) else "Website URL"
         eh.add_links({link_name: f'http://{eh.props[child_key].get("domain")}'})
         _ = available_domains.pop(domain_key)
         if available_domains:
