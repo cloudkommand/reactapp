@@ -53,7 +53,7 @@ def lambda_handler(event, context):
         if cdef.get("cloudfront") and not domains:
             eh.add_log("Cloudfront requires at least one domain", {"cdef": cdef}, True)
             eh.perm_error("Cloudfront requires at least one domain", 0)
-        if len(domains.keys()) > 1 and not cdef.get("cloudfront"):
+        if domains and len(domains.keys()) > 1 and not cdef.get("cloudfront"):
             eh.add_log("Multiple domains requires cloudfront", {"cdef": cdef}, True)
             eh.perm_error("Multiple domains requires cloudfront", 0)
 
