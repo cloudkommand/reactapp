@@ -154,6 +154,7 @@ def compare_defs(event):
         eh.add_op("compare_etags")
 
     else:
+        eh.add_op("load_initial_props")
         eh.add_log("Definitions Don't Match, Deploying", {"old": old_rendef, "new": new_rendef})
 
 @ext(handler=eh, op="compare_etags")
