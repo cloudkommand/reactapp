@@ -471,6 +471,8 @@ def setup_status_objects(bucket):
 @ext(handler=eh, op="setup_codebuild_project")
 def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, component_name, repo_id, codebuild_runtime_versions, codebuild_install_commands):
     codebuild = boto3.client('codebuild')
+    curated_environment_images = codebuild.list_curated_environment_images()
+    print(curated_environment_images)
     destination_bucket = eh.props['S3']['name']
     pre_build_commands = []
 
@@ -518,6 +520,64 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_c
                 build_container_size = "BUILD_GENERAL1_MEDIUM"
     else:
         build_container_size = "BUILD_GENERAL1_MEDIUM"
+    
+    #     "aws/codebuild/amazonlinux2-x86_64-standard:3.0"
+    #     "aws/codebuild/amazonlinux2-x86_64-standard:4.0"
+    #     "aws/codebuild/amazonlinux2-aarch64-standard:1.0"
+    #     "aws/codebuild/amazonlinux2-aarch64-standard:2.0"
+    #     "aws/codebuild/standard:4.0	ubuntu/standard/4.0"
+    #     "aws/codebuild/standard:5.0	ubuntu/standard/5.0"
+    #     "aws/codebuild/standard:6.0	ubuntu/standard/6.0"
+    #     "aws/codebuild/windows-base:2019-1.0"
+    #     "aws/codebuild/windows-base:2019-2.0"
+
+    # android: 28, android: 28.x
+    # android: 29, android: 29.x
+    # android: latest
+    # dotnet: 3.1, dotnet: 3.x
+    # dotnet: 5.0, dotnet: 5.x
+    # dotnet: 6.0, dotnet: 6.x
+    # dotnet: latest
+    # golang: 1.12
+    # golang: 1.13
+    # golang: 1.14
+    # golang: 1.15
+    # golang: 1.16
+    # golang: 1.18
+    # golang: 1.x
+    # golang: latest
+    # java: corretto8, java: corretto8.x
+    # java: corretto11, java: corretto11.x
+    # java: corretto17, java: corretto17.x
+    # java: latest
+    # nodejs: 8, nodejs: 8.x
+    # nodejs: 10, nodejs: 10.x
+    # nodejs: 12, nodejs: 12.x
+    # nodejs: 14, nodejs: 14.x
+    # nodejs: 16, nodejs: 16.x
+    # nodejs: latest
+    # php: 7.3
+    # php: 7.4
+    # php: 7.x
+    # php: 8.0
+    # php: 8.1
+    # php: 8.x
+    # php: latest
+    # python: 3.7
+    # python: 3.8
+    # python: 3.9
+    # python: 3.x
+    # python: latest
+    # ruby: 2.6
+    # ruby: 2.7
+    # ruby: 2.x
+    # ruby: 3.1
+    # ruby: latest
+
+
+    #     codebuild_image_runtime_version_mapping = {
+    #         "android28": []
+    #     }
 
     try:
         params = {
