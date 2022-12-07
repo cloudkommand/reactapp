@@ -573,7 +573,7 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_c
             },
             "environment": {
                 "type": "LINUX_CONTAINER",
-                "image": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+                "image": CODEBUILD_RUNTIME_TO_IMAGE_MAPPING[f'nodejs{codebuild_runtime_versions["nodejs"]}'],
                 "computeType": build_container_size,
                 "imagePullCredentialsType": "CODEBUILD"
             },
@@ -831,6 +831,39 @@ def form_domain(bucket, base_domain):
 #     except botocore.exceptions.ClientError as e:
 #         eh.add_log("Remove Codebuild Error", {"error": str(e)}, True)
 #         eh.retry_error(str(e), 60 if car else 15)
+
+CODEBUILD_RUNTIME_TO_IMAGE_MAPPING = {
+    "android28": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "android29": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "dotnet3.1": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "dotnet5.0": "aws/codebuild/standard:5.0",
+    "dotnet6.0": "aws/codebuild/standard:6.0",
+    "golang1.12": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "golang1.13": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "golang1.14": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "golang1.15": "aws/codebuild/standard:5.0",
+    "golang1.16": "aws/codebuild/standard:5.0",
+    "golang1.18": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+    "javacorretto8": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "javacorretto11": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "javacorretto17": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+    "nodejs8": "aws/codebuild/amazonlinux2-aarch64-standard:1.0",
+    "nodejs10": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "nodejs12": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "nodejs14": "aws/codebuild/standard:5.0",
+    "nodejs16": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+    "php7.3": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "php7.4": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "php8.0": "aws/codebuild/standard:5.0",
+    "php8.1": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+    "python3.7": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "python3.8": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "python3.9": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "python3.10": "aws/codebuild/standard:6.0",
+    "ruby2.6": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "ruby2.7": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "ruby3.1": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+}
 
 """
 aws/codebuild/amazonlinux2-x86_64-standard:3.0	
