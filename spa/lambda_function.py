@@ -547,7 +547,7 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_c
                         },
                         "post_build": {
                             "commands": [
-                                f'bash -c "if [ \"$CODEBUILD_BUILD_SUCCEEDING\" == \"1\" ]; then aws s3 cp --debug s3://{bucket}/{SUCCESS_FILE} s3://{bucket}/$THIS_BUILD_KEY; else aws s3 cp --debug s3://{bucket}/{ERROR_FILE} s3://{bucket}/$THIS_BUILD_KEY; fi"'
+                                f'bash -c "if [ \"$CODEBUILD_BUILD_SUCCEEDING\" == \"1\" ]; then aws s3 cp s3://{bucket}/{SUCCESS_FILE} s3://{bucket}/$THIS_BUILD_KEY; else aws s3 cp s3://{bucket}/{ERROR_FILE} s3://{bucket}/$THIS_BUILD_KEY; fi"'
                             ]
                         }
                     }), 
