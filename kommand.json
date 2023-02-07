@@ -79,6 +79,11 @@
                         "description": "Commands installing required libraries/packages before a build is run.",
                         "default": []
                     },
+                    "codebuild_build_commands": {
+                        "type": "array",
+                        "description": "Commands building the code",
+                        "default": [ "mkdir -p build", "npm install", "npm run build" ]
+                    },
                     "build_container_size": {
                         "type": "string",
                         "description": "The size of the codebuild container. Can speed up builds if you expect them to take a long time.",
