@@ -40,6 +40,7 @@ def lambda_handler(event, context):
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
         codebuild_runtime_versions = cdef.get("codebuild_runtime_versions") or {"nodejs": 10} # assume dictionary with this format
         codebuild_install_commands = cdef.get("codebuild_install_commands") or None
+        codebuild_build_commands = cdef.get("codebuild_build_commands") or [ "mkdir -p build", "npm install", "npm run build" ]
         
         caller_reference = str(current_epoch_time_usec_num())
         if not eh.state.get("caller_reference"):
@@ -106,7 +107,7 @@ def lambda_handler(event, context):
         # put_object(bucket, object_name, s3_build_object_name)
         setup_cloudfront_oai(cdef)
         setup_s3(cname, cdef, domains, index_document, error_document, prev_state)
-        setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands)
+        setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands, codebuild_build_commands)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
         set_object_metadata(cdef, index_document, error_document, region, domain)
@@ -469,7 +470,7 @@ def setup_status_objects(bucket):
 
 
 @ext(handler=eh, op="setup_codebuild_project")
-def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, component_name, repo_id, codebuild_runtime_versions, codebuild_install_commands):
+def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, component_name, repo_id, codebuild_runtime_versions, codebuild_install_commands, codebuild_build_commands):
     codebuild = boto3.client('codebuild')
     destination_bucket = eh.props['S3']['name']
     pre_build_commands = []
@@ -542,11 +543,7 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_c
                             "commands": pre_build_commands or None
                         }) or None,
                         "build": {
-                            "commands": [
-                                "mkdir -p build",
-                                "npm install",
-                                "npm run build"
-                            ]
+                            "commands": codebuild_build_commands
                         },
                         "post_build": {
                             "commands": [
