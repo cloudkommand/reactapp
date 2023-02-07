@@ -4,16 +4,26 @@
             "type": "@iam.policy",
             "document": {
                 "Version": "2012-10-17",
-                "Statement": [{
-                    "Sid": "Vis",
-                    "Effect": "Allow",
-                    "Action": [
-                        "logs:*",
-                        "s3:*",
-                        "iam:*"
-                    ],
-                    "Resource": "*"
-                }]
+                "Statement": [
+                    {
+                        "Sid": "Vis",
+                        "Effect": "Allow",
+                        "Action": [
+                            "logs:*",
+                            "s3:*",
+                            "iam:*"
+                        ],
+                        "Resource": "*"
+                    },
+                    {
+                        "Sid": "Vis",
+                        "Effect": "Allow",
+                        "Action": [
+                            "s3:*"
+                        ],
+                        "Resource": ["arn:aws:s3:::*/*"]
+                    }
+                ]
             }
         },
         "cb-role": {
