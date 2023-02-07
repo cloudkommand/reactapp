@@ -14,14 +14,6 @@
                             "iam:*"
                         ],
                         "Resource": "*"
-                    },
-                    {
-                        "Sid": "Vis",
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:*"
-                        ],
-                        "Resource": ["arn:aws:s3:::*/*"]
                     }
                 ]
             }
