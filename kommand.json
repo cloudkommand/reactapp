@@ -4,16 +4,18 @@
             "type": "@iam.policy",
             "document": {
                 "Version": "2012-10-17",
-                "Statement": [{
-                    "Sid": "Vis",
-                    "Effect": "Allow",
-                    "Action": [
-                        "logs:*",
-                        "s3:*",
-                        "iam:*"
-                    ],
-                    "Resource": "*"
-                }]
+                "Statement": [
+                    {
+                        "Sid": "Vis",
+                        "Effect": "Allow",
+                        "Action": [
+                            "logs:*",
+                            "s3:*",
+                            "iam:*"
+                        ],
+                        "Resource": "*"
+                    }
+                ]
             }
         },
         "cb-role": {
@@ -78,6 +80,11 @@
                         "type": "array",
                         "description": "Commands installing required libraries/packages before a build is run.",
                         "default": []
+                    },
+                    "codebuild_build_commands": {
+                        "type": "array",
+                        "description": "Commands building the code",
+                        "default": [ "mkdir -p build", "npm install", "npm run build" ]
                     },
                     "build_container_size": {
                         "type": "string",

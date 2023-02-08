@@ -40,6 +40,7 @@ def lambda_handler(event, context):
         codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
         codebuild_runtime_versions = cdef.get("codebuild_runtime_versions") or {"nodejs": 10} # assume dictionary with this format
         codebuild_install_commands = cdef.get("codebuild_install_commands") or None
+        codebuild_build_commands = cdef.get("codebuild_build_commands") or [ "mkdir -p build", "npm install", "npm run build" ]
         
         caller_reference = str(current_epoch_time_usec_num())
         if not eh.state.get("caller_reference"):
@@ -106,7 +107,7 @@ def lambda_handler(event, context):
         # put_object(bucket, object_name, s3_build_object_name)
         setup_cloudfront_oai(cdef)
         setup_s3(cname, cdef, domains, index_document, error_document, prev_state)
-        setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands)
+        setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, cname, repo_id, codebuild_runtime_versions, codebuild_install_commands, codebuild_build_commands)
         start_build(codebuild_project_name)
         check_build_complete(bucket)
         set_object_metadata(cdef, index_document, error_document, region, domain)
@@ -469,7 +470,7 @@ def setup_status_objects(bucket):
 
 
 @ext(handler=eh, op="setup_codebuild_project")
-def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, component_name, repo_id, codebuild_runtime_versions, codebuild_install_commands):
+def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_container_size, role_arn, prev_state, component_name, repo_id, codebuild_runtime_versions, codebuild_install_commands, codebuild_build_commands):
     codebuild = boto3.client('codebuild')
     curated_environment_images = codebuild.list_curated_environment_images()
     print(curated_environment_images)
@@ -602,11 +603,7 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_c
                             "commands": pre_build_commands or None
                         }) or None,
                         "build": {
-                            "commands": [
-                                "mkdir -p build",
-                                "npm install",
-                                "npm run build"
-                            ]
+                            "commands": codebuild_build_commands
                         },
                         "post_build": {
                             "commands": [
@@ -633,7 +630,7 @@ def setup_codebuild_project(codebuild_project_name, bucket, object_name, build_c
             },
             "environment": {
                 "type": "LINUX_CONTAINER",
-                "image": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+                "image": CODEBUILD_RUNTIME_TO_IMAGE_MAPPING[f'nodejs{codebuild_runtime_versions["nodejs"]}'],
                 "computeType": build_container_size,
                 "imagePullCredentialsType": "CODEBUILD"
             },
@@ -891,6 +888,39 @@ def form_domain(bucket, base_domain):
 #     except botocore.exceptions.ClientError as e:
 #         eh.add_log("Remove Codebuild Error", {"error": str(e)}, True)
 #         eh.retry_error(str(e), 60 if car else 15)
+
+CODEBUILD_RUNTIME_TO_IMAGE_MAPPING = {
+    "android28": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "android29": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "dotnet3.1": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "dotnet5.0": "aws/codebuild/standard:5.0",
+    "dotnet6.0": "aws/codebuild/standard:6.0",
+    "golang1.12": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "golang1.13": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "golang1.14": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "golang1.15": "aws/codebuild/standard:5.0",
+    "golang1.16": "aws/codebuild/standard:5.0",
+    "golang1.18": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+    "javacorretto8": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "javacorretto11": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "javacorretto17": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+    "nodejs8": "aws/codebuild/amazonlinux2-aarch64-standard:1.0",
+    "nodejs10": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "nodejs12": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "nodejs14": "aws/codebuild/standard:5.0",
+    "nodejs16": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+    "php7.3": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "php7.4": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "php8.0": "aws/codebuild/standard:5.0",
+    "php8.1": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+    "python3.7": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "python3.8": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "python3.9": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "python3.10": "aws/codebuild/standard:6.0",
+    "ruby2.6": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "ruby2.7": "aws/codebuild/amazonlinux2-x86_64-standard:3.0",
+    "ruby3.1": "aws/codebuild/amazonlinux2-x86_64-standard:4.0",
+}
 
 """
 aws/codebuild/amazonlinux2-x86_64-standard:3.0	
