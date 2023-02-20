@@ -52,6 +52,8 @@ def lambda_handler(event, context):
         codebuild_project_override_def = cdef.get(CODEBUILD_PROJECT_KEY) or {} #For codebuild project overrides
         codebuild_build_override_def = cdef.get(CODEBUILD_BUILD_KEY) or {} #For codebuild build overrides
 
+        cloudfront_distribution_override_def = cdef.get(CLOUDFRONT_DISTRIBUTION_KEY) or {} #For cloudfront distribution overrides
+
         # s3_override_def = cdef.get(S3_KEY) or {} #For s3 overrides
         oai_override_def = cdef.get(CLOUDFRONT_OAI_KEY) or {} #For cloudfront oai overrides
 
@@ -138,7 +140,7 @@ def lambda_handler(event, context):
         run_codebuild_build(codebuild_build_override_def, trust_level)
         copy_output_to_s3(cloudfront)
         set_object_metadata(cdef, index_document, error_document, region, domain)
-        setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state)
+        setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def)
         
         #Have to do it after CF distribution is gone
         if event["op"] == "delete" and not eh.ops.get("setup_cloudfront_distribution") and not eh.state.get("completed_s3"):
@@ -686,10 +688,10 @@ def set_object_metadata(cdef, index_document, error_document, region, domain):
         eh.retry_error(str(e), 95 if not domain else 85)
 
 @ext(handler=eh, op="setup_cloudfront_distribution")
-def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state):
+def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def):
     print(f"props = {eh.props}")
 
-    S3 = eh.props.get(S3_KEY, {})
+    S3 = eh.props.get(f"{S3_KEY}_{SOLO_KEY}", {})
     component_def = remove_none_attributes({
         "aliases": list(set(map(lambda x: x['domain'], domains.values()))),
         "target_s3_bucket": S3.get("name"),
@@ -712,6 +714,11 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
         "cache_policy_name": cdef.get("cloudfront_cache_policy_name"),
         "tags": cdef.get("cloudfront_tags")
     })
+
+    if prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY, {}):
+        eh.add_props({CLOUDFRONT_DISTRIBUTION_KEY: prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY, {})})
+
+    component_def.update(cloudfront_distribution_override_def)
 
     function_arn = lambda_env('cloudfront_distribution_extension_arn')
 
