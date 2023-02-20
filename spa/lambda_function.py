@@ -691,7 +691,7 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
 
     S3 = eh.props.get(S3_KEY, {})
     component_def = remove_none_attributes({
-        "aliases": list(set(domains.values())),
+        "aliases": list(set(map(lambda x: x['domain'], domains.values()))),
         "target_s3_bucket": S3.get("name"),
         "default_root_object": index_document if not eh.state.get("s3_destination_folder") else f"{eh.state.get('s3_destination_folder')}/{index_document}",
         "oai_id": eh.props.get(CLOUDFRONT_OAI_KEY, {}).get("id"),
