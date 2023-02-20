@@ -426,7 +426,9 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
     if proceed:
         print(eh.state)
         _ = eh.state['s3_domains'].pop(domain_key)
-        if eh.state['s3_domains']:
+        print(eh.state)
+        if eh.state.get('s3_domains'):
+            print(eh.state.get("s3_domains"))
             eh.add_op("setup_s3", s3_domains)
             setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
         else:
