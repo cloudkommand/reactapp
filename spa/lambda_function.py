@@ -421,12 +421,16 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
         merge_props=False, op=op)
     print(f"proceed = {proceed}")
 
+    print(domain_key)
+    print(child_key)
     if proceed:
-        _ = s3_domains.pop(domain_key, None)
-        if s3_domains:
+        print(eh.state)
+        _ = eh.state['s3_domains'].pop(domain_key)
+        if eh.state['s3_domains']:
             eh.add_op("setup_s3", s3_domains)
             setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
         else:
+            eh.complete_op("setup_s3")
             eh.add_state({"completed_s3": True})
 
 @ext(handler=eh, op="setup_codebuild_project")
