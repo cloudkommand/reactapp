@@ -331,7 +331,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
                 print(f"s3_domains = {s3_domains}")
             else:
                 # Still don't have Cloudfront
-                s3_domains = domains or {}
+                s3_domains = domains or {SOLO_KEY: None}
                 for k in prev_s3_states.keys():
                     if k not in domains:
                         s3_domains[k] = "delete"
@@ -341,9 +341,6 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
 
         # So that retries are handled properly
         eh.add_op("setup_s3", s3_domains)
-        
-
-
 
     website_configuration = None
     block_public_access = True
