@@ -122,6 +122,7 @@ def lambda_handler(event, context):
 
         elif op == "delete":
             eh.add_op("setup_codebuild_project")
+            eh.add_op("setup_s3")
             eh.add_props(prev_state.get("props", {}))
             if cloudfront:
                 eh.add_op("setup_cloudfront_oai")
@@ -450,9 +451,14 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
             eh.add_op("setup_s3", s3_domains)
             setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
         else:
+            # This goes with the codebuild project changes.
             if not eh.state.get("destination_bucket_name"):
-                destination_bucket_name = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))[0]
+                if op == "upsert":
+                    destination_bucket_name = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))[0]
+                else:
+                    destination_bucket_name = bucket_name
                 eh.add_state({"destination_bucket_name": destination_bucket_name})
+            ##############################################
             eh.complete_op("setup_s3")
             eh.add_state({"completed_s3": True})
 
@@ -460,7 +466,6 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
 def setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_def, trust_level):
     #This is a workaround for the builds being unreliable
     #We are just going to use 1 S3 bucket
-    
 
     if not eh.state.get("codebuild_object_key"):
         eh.add_state({"codebuild_object_key": f"{random_id()}.zip"})
