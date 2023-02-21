@@ -135,7 +135,8 @@ def lambda_handler(event, context):
         load_initial_props(bucket, object_name)
 
         add_config(bucket, object_name, cdef.get("config"))
-        setup_cloudfront_oai(cdef, oai_override_def, prev_state)
+        if op == "upsert":
+            setup_cloudfront_oai(cdef, oai_override_def, prev_state)
         setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
         setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_project_override_def, trust_level)
         run_codebuild_build(codebuild_build_override_def, trust_level)
@@ -147,6 +148,9 @@ def lambda_handler(event, context):
         if event["op"] == "delete" and not eh.ops.get("setup_cloudfront_distribution") and not eh.state.get("completed_s3"):
             eh.add_op("setup_s3")
             setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
+
+        if op == "delete":
+            setup_cloudfront_oai(cdef, oai_override_def, prev_state)
 
         setup_route53(cdef, prev_state)
         # invalidate_files()
