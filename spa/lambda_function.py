@@ -421,6 +421,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
         child_key=child_key, progress_start=20, progress_end=50,
+        links_prefix = f"{domain_key} " if domain_key != SOLO_KEY else "",
         merge_props=False, op=op)
     print(f"proceed = {proceed}")
 
@@ -761,7 +762,7 @@ def setup_route53(cdef, prev_state, i=1):
     if cdef.get("cloudfront"):
         component_def = remove_none_attributes({
             "domain": domain,
-            "hosted_zone_id": available_domains[domain_key].get("hosted_zone_id"),
+            "route53_hosted_zone_id": available_domains[domain_key].get("hosted_zone_id"),
             "alias_target_type": "cloudfront",
             "target_cloudfront_domain_name": eh.props["Distribution"]["domain_name"]
         })
