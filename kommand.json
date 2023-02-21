@@ -1,29 +1,5 @@
 {
     "components": {
-        "cb-policy": {
-            "type": "@iam.policy",
-            "document": {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "Vis",
-                        "Effect": "Allow",
-                        "Action": [
-                            "logs:*",
-                            "s3:*",
-                            "iam:*"
-                        ],
-                        "Resource": "*"
-                    }
-                ]
-            }
-        },
-        "cb-role": {
-            "type": "@iam.role",
-            "role_services": ["codebuild"],
-            "policies": ["@cb-policy"],
-            "include_basic_lambda_policy": false
-        },
         "spa": {
             "type": "ext",
             "displayname": "CK Single Page React Application",
@@ -38,10 +14,11 @@
             ],
             "environment_variables": {
                 "s3_extension_arn": "@s3.bucket:props.function_arn",
-                "codebuild_role_arn": "@cb-role:props.arn",
+                "codebuild_project_extension_arn": "@codebuild.project:props.function_arn",
                 "route53_extension_arn": "@route53.record:props.function_arn",
                 "cloudfront_oai_extension_arn": "@cloudfront.oai:props.function_arn",
-                "cloudfront_distribution_extension_arn": "@cloudfront.distribution:props.function_arn"
+                "cloudfront_distribution_extension_arn": "@cloudfront.distribution:props.function_arn",
+                "codebuild_build_extension_arn": "@codebuildactions.runbuild:props.function_arn"
             },
             "download_folder": true,
             "policy": {
@@ -54,10 +31,6 @@
                         "s3:*",
                         "lambda:GetFunction",
                         "lambda:InvokeFunction",
-                        "codebuild:CreateProject",
-                        "codebuild:UpdateProject",
-                        "codebuild:DeleteProject",
-                        "codebuild:StartBuild",
                         "cloudfront:CreateInvalidation",
                         "cloudfront:GetInvalidation"
                     ],
@@ -164,6 +137,8 @@
         "s3": "https://github.com/cloudkommand/s3",
         "iam": "https://github.com/cloudkommand/iam",
         "route53": "https://github.com/cloudkommand/route53",
-        "cloudfront": "https://github.com/cloudkommand/cloudfront"
+        "cloudfront": "https://github.com/cloudkommand/cloudfront",
+        "codebuild": "https://github.com/cloudkommand/codebuild",
+        "codebuildactions": "https://github.com/cloudkommand/codebuildactions"
     }
 }
