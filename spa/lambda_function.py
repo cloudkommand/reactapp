@@ -139,7 +139,7 @@ def lambda_handler(event, context):
         setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
         setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_project_override_def, trust_level)
         run_codebuild_build(codebuild_build_override_def, trust_level)
-        copy_output_to_s3(cloudfront, index_document, error_document)
+        # copy_output_to_s3(cloudfront, index_document, error_document)
         set_object_metadata(cdef, index_document, error_document, region, domains)
         setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def)
         
@@ -446,117 +446,20 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
             eh.add_op("setup_s3", s3_domains)
             setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
         else:
+            if not eh.state.get("destination_bucket_name"):
+                destination_bucket_name = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))[0]
+                eh.add_state({"destination_bucket_name": destination_bucket_name})
             eh.complete_op("setup_s3")
             eh.add_state({"completed_s3": True})
 
 @ext(handler=eh, op="setup_codebuild_project")
 def setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_def, trust_level):
+    #This is a workaround for the builds being unreliable
+    #We are just going to use 1 S3 bucket
+    
+
     if not eh.state.get("codebuild_object_key"):
         eh.add_state({"codebuild_object_key": f"{random_id()}.zip"})
-
-    # try:
-    #     params = {
-    #         "name": codebuild_project_name,
-    #         "description": f"Codebuild project for component {component_name} in app {repo_id}",
-    #         "source": {
-    #             "type": "S3",
-    #             "location": f"{bucket}/{object_name}",
-    #             "buildspec": json.dumps({
-    #                 "version": 0.2,
-    #                 "env": {
-    #                     "variables": {
-    #                         "THIS_BUILD_KEY": "whocares"
-    #                     }
-    #                 },
-    #                 "phases": remove_none_attributes({
-    #                     "install": remove_none_attributes({
-    #                         "runtime-versions": codebuild_runtime_versions,
-    #                         "commands": codebuild_install_commands or None
-    #                     }) or None,
-    #                     "pre_build": remove_none_attributes({
-    #                         "commands": pre_build_commands or None
-    #                     }) or None,
-    #                     "build": {
-    #                         "commands": codebuild_build_commands
-    #                     },
-    #                     "post_build": {
-    #                         "commands": [
-    #                             f'bash -c "if [ \"$CODEBUILD_BUILD_SUCCEEDING\" == \"1\" ]; then aws s3 cp s3://{bucket}/{SUCCESS_FILE} s3://{bucket}/$THIS_BUILD_KEY; else aws s3 cp s3://{bucket}/{ERROR_FILE} s3://{bucket}/$THIS_BUILD_KEY; fi"'
-    #                         ]
-    #                     }
-    #                 }), 
-    #                 "artifacts": {
-    #                     "files": [
-    #                         "**/*"
-    #                     ],
-    #                     "base-directory": "build"
-    #                 }
-    #             }, sort_keys=True)
-    #         },
-    #         "artifacts": {
-    #             "type": "S3",
-    #             "location": destination_bucket,
-    #             "path": "/",
-    #             "namespaceType": "NONE",
-    #             "name": "/",
-    #             "packaging": "NONE",
-    #             "encryptionDisabled": True
-    #         },
-    #         "environment": {
-    #             "type": "LINUX_CONTAINER",
-    #             "image": CODEBUILD_RUNTIME_TO_IMAGE_MAPPING[f'nodejs{codebuild_runtime_versions["nodejs"]}'],
-    #             "computeType": build_container_size,
-    #             "imagePullCredentialsType": "CODEBUILD"
-    #         },
-    #         "serviceRole": role_arn
-    #     }
-    #     print(f"params = {params}")
-    #     this_params_hash = json.dumps(params, sort_keys=True)
-
-    #     response = codebuild.create_project(**params).get("project")
-    #     eh.add_log("Created Codebuild Project", response)
-    #     eh.add_props({
-    #         "codebuild_project_arn": response['arn'],
-    #         "codebuild_project_name": response['name'],
-    #         "hash": this_params_hash
-    #     })
-    #     eh.add_op("start_build")
-    #     eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
-    # except botocore.exceptions.ClientError as e:
-    #     if e.response['Error']['Code'] == "ResourceAlreadyExistsException":
-    #         try:
-    #             # if this_params_hash != prev_state.get("props", {}).get("hash"):
-    #             response = codebuild.update_project(**params).get("project")
-    #             eh.add_log("Updated Codebuild Project", response)
-    #             eh.add_props({
-    #                 "codebuild_project_arn": response['arn'],
-    #                 "codebuild_project_name": response['name'],
-    #                 "hash": json.dumps(params, sort_keys=True)
-    #             })
-    #             eh.add_op("start_build")
-    #             eh.add_links({"Codebuild Project": gen_codebuild_link(codebuild_project_name)})
-                
-    #         except botocore.exceptions.ClientError as e:
-    #             if e.response['Error']['Code'] == "InvalidInputException":
-    #                 eh.add_log("Invalid Codebuild Input", {"error": str(e)}, True)
-    #                 eh.perm_error("Invalid Codebuild Input", 50)
-    #             elif e.response['Error']['Code'] == "ResourceNotFoundException":
-    #                 eh.add_log("Codebuild Project Gone", {"error": str(e)}, True)
-    #                 eh.perm_error("Codebuild Project Gone", 50)
-    #             else:
-    #                 eh.add_log("Codebuild Error", {"error": str(e)}, True)
-    #                 eh.retry_error(str(e), 50)
-
-    #     elif e.response['Error']['Code'] == "InvalidInputException":
-    #         eh.add_log("Invalid Codebuild Input", {"error": str(e)}, True)
-    #         eh.perm_error("Invalid Codebuild Input", 50)
-    #     elif e.response['Error']['Code'] == "AccountLimitExceededException":
-    #         eh.add_log("Codebuild Limit Excceeded", {"error": str(e)}, True)
-    #         eh.perm_error("Codebuild Limit Excceeded", 50)
-    #     else:
-    #         eh.add_log("Codebuild Error", {"error": str(e)}, True)
-    #         eh.retry_error(str(e), 50)
-
 
     component_def = {
         "s3_bucket": bucket,
@@ -573,10 +476,11 @@ def setup_codebuild_project(op, bucket, object_name, build_container_size, node_
         },
         "artifacts": {
             "type": "S3",
-            "location": bucket,
-            "path": "reactspazips", 
-            "name": eh.state["codebuild_object_key"],
-            "packaging": "ZIP",
+            "location": eh.state['destination_bucket_name'],
+            "path": "/", 
+            "namespaceType": "NONE",
+            "name": "/",
+            "packaging": "NONE",
             "encryptionDisabled": True
         },
         "trust_level": trust_level
@@ -596,6 +500,50 @@ def setup_codebuild_project(op, bucket, object_name, build_container_size, node_
 
     if op == "upsert":
         eh.add_op("run_codebuild_build")
+
+# @ext(handler=eh, op="setup_codebuild_project")
+# def setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_def, trust_level):
+#     if not eh.state.get("codebuild_object_key"):
+#         eh.add_state({"codebuild_object_key": f"{random_id()}.zip"})
+
+#     component_def = {
+#         "s3_bucket": bucket,
+#         "s3_object": object_name,
+#         "build_container_size": build_container_size,
+#         "runtime_versions": {"nodejs": node_version},
+#         # "pre_build_commands": pre_build_commands,
+#         "build_commands": ["mkdir -p build", "npm install", "npm run build"],
+#         "buildspec_artifacts": {
+#             "files": [
+#                 "**/*"
+#             ],
+#             "base-directory": "build"
+#         },
+#         "artifacts": {
+#             "type": "S3",
+#             "location": bucket,
+#             "path": "/", 
+#             "name": eh.state["codebuild_object_key"],
+#             "packaging": "ZIP",
+#             "encryptionDisabled": True
+#         },
+#         "trust_level": trust_level
+#         # "post_build_commands": post_build_commands,
+#         # "privileged_mode": True
+#     }
+
+#     #Allows for custom overrides as the user sees fit
+#     component_def.update(codebuild_def)
+
+#     eh.invoke_extension(
+#         arn=lambda_env("codebuild_project_extension_arn"), 
+#         component_def=component_def, 
+#         child_key=CODEBUILD_PROJECT_KEY, progress_start=25, 
+#         progress_end=30
+#     )
+
+#     if op == "upsert":
+#         eh.add_op("run_codebuild_build")
 
 @ext(handler=eh, op="run_codebuild_build")
 def run_codebuild_build(codebuild_build_def, trust_level):
@@ -621,91 +569,85 @@ def run_codebuild_build(codebuild_build_def, trust_level):
     # eh.add_op("get_final_props")
 
 
-@ext(handler=eh, op="copy_output_to_s3")
-def copy_output_to_s3(cloudfront, index_document, error_document):
-    if cloudfront:
-        eh.state['s3_destination_folder'] = str(current_epoch_time_usec_num())
+# @ext(handler=eh, op="copy_output_to_s3")
+# def copy_output_to_s3(cloudfront, index_document, error_document):
+#     if cloudfront:
+#         eh.state['s3_destination_folder'] = str(current_epoch_time_usec_num())
 
-    # If cloudfront, we want to copy it to the cloudfront bucket inside a folder.
-    # Otherwise, we copy it to the root of the bucket so Route53 serves it directly.
-    s3_bucket_names = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))
-    if not s3_bucket_names:
-        eh.perm_error("No S3 Buckets to copy to", 50)
-        eh.add_log("No S3 Buckets. Shouldn't Happen", {"props": eh.props}, is_error=True)
-        return 0
+#     # If cloudfront, we want to copy it to the cloudfront bucket inside a folder.
+#     # Otherwise, we copy it to the root of the bucket so Route53 serves it directly.
+#     s3_bucket_names = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))
+#     if not s3_bucket_names:
+#         eh.perm_error("No S3 Buckets to copy to", 50)
+#         eh.add_log("No S3 Buckets. Shouldn't Happen", {"props": eh.props}, is_error=True)
+#         return 0
 
-    codebuild_project_props = eh.props[CODEBUILD_PROJECT_KEY]
-    build_bucket = codebuild_project_props["zip_artifact_bucket"]
-    build_key = codebuild_project_props["zip_artifact_key"]
+#     codebuild_project_props = eh.props[CODEBUILD_PROJECT_KEY]
+#     build_bucket = codebuild_project_props["zip_artifact_bucket"]
+#     build_key = codebuild_project_props["zip_artifact_key"]
 
-    # response = s3.get_object(Bucket=build_bucket, Key=build_key)
-    # tmp_key = f"tmp/{random_id()}.zip"
-    # with open(tmp_key, "wb") as f:
-    #     f.write(response['Body'].read())
+#     # Download the zip file from S3
+#     obj = s3.get_object(Bucket=build_bucket, Key=build_key)
+#     zipfile_bytes = io.BytesIO(obj['Body'].read())
 
-    # tmp_directory = f"/tmp/{random_id()}"
-    # os.mkdir(tmp_directory)
-
-    # with zipfile.ZipFile(tmp_key, 'r') as zip_ref:
-    #     zip_ref.extractall(tmp_directory)
-
-    # for s3_bucket_name in s3_bucket_names:
-    #     print(f"Copying to {s3_bucket_name}")
-    #     copy_directory_to_s3(tmp_directory, s3_bucket_name)
-
-    # Download the zip file from S3
-    obj = s3.get_object(Bucket=build_bucket, Key=build_key)
-    zipfile_bytes = io.BytesIO(obj['Body'].read())
-
-    tmp_directory = f"/tmp/{random_id()}"
-    os.mkdir(tmp_directory)
-    print(tmp_directory)
+#     tmp_directory = f"/tmp/{random_id()}"
+#     os.mkdir(tmp_directory)
+#     print(tmp_directory)
     
-    # Extract the contents of the zip file
-    with zipfile.ZipFile(zipfile_bytes, 'r') as zip_ref:
-        zip_ref.extractall(tmp_directory)
-        print(os.listdir(tmp_directory))
-        print(zip_ref.namelist())
-        # Upload the extracted files to S3
-        for file_name in zip_ref.namelist():
-            key = f"{eh.state.get('s3_destination_folder')}/{file_name}" if eh.state.get("s3_destination_folder") else file_name
-            for s3_bucket_name in s3_bucket_names:
-                file_bytes = open(f"{tmp_directory}/{file_name}", 'rb')
-                content_type = mimetypes.guess_type(file_name)[0] or 'binary/octet-stream'
-                cache_control = None
-                if file_name.endswith("json"):
-                    content_type = "binary/octet-stream"
-                elif file_name.endswith(".js"):
-                    content_type = "application/x-javascript"
-                if file_name in [index_document, error_document]:
-                    cache_control = "max-age=0"
+#     # Extract the contents of the zip file
+#     with zipfile.ZipFile(zipfile_bytes, 'r') as zip_ref:
+#         zip_ref.extractall(tmp_directory)
+#         print(os.listdir(tmp_directory))
+#         print(zip_ref.namelist())
+#         # Upload the extracted files to S3
+#         for file_name in zip_ref.namelist():
+#             key = f"{eh.state.get('s3_destination_folder')}/{file_name}" if eh.state.get("s3_destination_folder") else file_name
+#             for s3_bucket_name in s3_bucket_names:
+#                 file_bytes = open(f"{tmp_directory}/{file_name}", 'rb')
+#                 content_type = mimetypes.guess_type(file_name)[0] or 'binary/octet-stream'
+#                 cache_control = None
+#                 if file_name.endswith("json"):
+#                     content_type = "binary/octet-stream"
+#                 elif file_name.endswith(".js"):
+#                     content_type = "application/x-javascript"
+#                 if file_name in [index_document, error_document]:
+#                     cache_control = "max-age=0"
 
-                print(f"Uploading {file_name} with content type {content_type}")
+#                 print(f"Uploading {file_name} with content type {content_type}")
 
-                put_object_args = remove_none_attributes({
-                    "Bucket": s3_bucket_name,
-                    "Key": key,
-                    "Body": file_bytes,
-                    "ContentType": content_type,
-                    "CacheControl": cache_control
-                })
+#                 put_object_args = remove_none_attributes({
+#                     "Bucket": s3_bucket_name,
+#                     "Key": key,
+#                     "Body": file_bytes,
+#                     "ContentType": content_type,
+#                     "CacheControl": cache_control
+#                 })
 
-                s3.put_object(**put_object_args)
-                file_bytes.close()
+#                 s3.put_object(**put_object_args)
+#                 file_bytes.close()
 
-
-# Only runs when cloudfront is off
 @ext(handler=eh, op="set_object_metadata")
 def set_object_metadata(cdef, index_document, error_document, region, domains):
+    bucket_name = eh.state["destination_bucket_name"]
 
-    s3_bucket_names = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))
-    for bucket_name in s3_bucket_names:
-        key = index_document
-        print(f"bucket_name = {bucket_name}")
-        print(f"key = {key}")
-        # print(f"s3_url_path = {s3_url_path}")
+    key = index_document
+    print(f"bucket_name = {bucket_name}")
+    print(f"key = {key}")
+    # print(f"s3_url_path = {s3_url_path}")
 
-        try:
+    try:
+        response = s3.copy_object(
+            Bucket=bucket_name,
+            Key=key,
+            CopySource=f"{bucket_name}/{key}",
+            MetadataDirective="REPLACE",
+            CacheControl="max-age=0",
+            ContentType="text/html"
+        )
+        eh.add_log(f"Fixed {index_document}", response)
+
+        if error_document != index_document:
+            key = error_document
             response = s3.copy_object(
                 Bucket=bucket_name,
                 Key=key,
@@ -714,26 +656,55 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
                 CacheControl="max-age=0",
                 ContentType="text/html"
             )
-            eh.add_log(f"Fixed {index_document}", response)
-
-            if error_document != index_document:
-                key = error_document
-                response = s3.copy_object(
-                    Bucket=bucket_name,
-                    Key=key,
-                    CopySource=f"{bucket_name}/{key}",
-                    MetadataDirective="REPLACE",
-                    CacheControl="max-age=0",
-                    ContentType="text/html"
-                )
-                eh.add_log(f"Fixed {error_document}", response)
+            eh.add_log(f"Fixed {error_document}", response)
 
 
-            if (not cdef.get("cloudfront")) and (not domains):
-                eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
-        except botocore.exceptions.ClientError as e:
-            eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
-            eh.retry_error(str(e), 95 if not domains else 85)
+        if (not cdef.get("cloudfront")) and (not domains):
+            eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
+    except botocore.exceptions.ClientError as e:
+        eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
+        eh.retry_error(str(e), 95 if not domains else 85)
+
+# Only runs when cloudfront is off
+# @ext(handler=eh, op="set_object_metadata")
+# def set_object_metadata(cdef, index_document, error_document, region, domains):
+
+#     s3_bucket_names = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))
+#     for bucket_name in s3_bucket_names:
+#         key = index_document
+#         print(f"bucket_name = {bucket_name}")
+#         print(f"key = {key}")
+#         # print(f"s3_url_path = {s3_url_path}")
+
+#         try:
+#             response = s3.copy_object(
+#                 Bucket=bucket_name,
+#                 Key=key,
+#                 CopySource=f"{bucket_name}/{key}",
+#                 MetadataDirective="REPLACE",
+#                 CacheControl="max-age=0",
+#                 ContentType="text/html"
+#             )
+#             eh.add_log(f"Fixed {index_document}", response)
+
+#             if error_document != index_document:
+#                 key = error_document
+#                 response = s3.copy_object(
+#                     Bucket=bucket_name,
+#                     Key=key,
+#                     CopySource=f"{bucket_name}/{key}",
+#                     MetadataDirective="REPLACE",
+#                     CacheControl="max-age=0",
+#                     ContentType="text/html"
+#                 )
+#                 eh.add_log(f"Fixed {error_document}", response)
+
+
+#             if (not cdef.get("cloudfront")) and (not domains):
+#                 eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
+#         except botocore.exceptions.ClientError as e:
+#             eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
+#             eh.retry_error(str(e), 95 if not domains else 85)
 
 @ext(handler=eh, op="setup_cloudfront_distribution")
 def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def):
@@ -742,8 +713,10 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
     S3 = eh.props.get(f"{S3_KEY}_{SOLO_KEY}", {})
     component_def = remove_none_attributes({
         "aliases": list(set(map(lambda x: x['domain'], domains.values()))),
-        "target_s3_bucket": S3.get("name"),
-        "default_root_object": index_document if not eh.state.get("s3_destination_folder") else f"{eh.state.get('s3_destination_folder')}/{index_document}",
+        # "target_s3_bucket": S3.get("name"),
+        # "default_root_object": index_document if not eh.state.get("s3_destination_folder") else f"{eh.state.get('s3_destination_folder')}/{index_document}",
+        "target_s3_bucket": eh.state["destination_bucket_name"],
+        "default_root_object": index_document,
         "oai_id": eh.props.get(CLOUDFRONT_OAI_KEY, {}).get("id"),
         "existing_id": cdef.get("cloudfront_existing_id"),
         "origin_shield": cdef.get("cloudfront_origin_shield"),
@@ -772,7 +745,7 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
 
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
-        child_key=CLOUDFRONT_DISTRIBUTION_KEY, progress_start=85, progress_end=100,
+        child_key=CLOUDFRONT_DISTRIBUTION_KEY, progress_start=65, progress_end=85,
         merge_props=False)
     print(f"proceed = {proceed}")
         
