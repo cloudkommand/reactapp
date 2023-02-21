@@ -138,7 +138,7 @@ def lambda_handler(event, context):
         add_config(bucket, object_name, cdef.get("config"))
         if op == "upsert":
             setup_cloudfront_oai(cdef, oai_override_def, prev_state)
-        setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
+            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
         setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_project_override_def, trust_level)
         run_codebuild_build(codebuild_build_override_def, trust_level)
         # copy_output_to_s3(cloudfront, index_document, error_document)
@@ -152,6 +152,7 @@ def lambda_handler(event, context):
 
         if op == "delete":
             setup_cloudfront_oai(cdef, oai_override_def, prev_state)
+            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
 
         setup_route53(cdef, prev_state)
         # invalidate_files()
@@ -470,32 +471,39 @@ def setup_codebuild_project(op, bucket, object_name, build_container_size, node_
     if not eh.state.get("codebuild_object_key"):
         eh.add_state({"codebuild_object_key": f"{random_id()}.zip"})
 
-    component_def = {
-        "s3_bucket": bucket,
-        "s3_object": object_name,
-        "build_container_size": build_container_size,
-        "runtime_versions": {"nodejs": node_version},
-        # "pre_build_commands": pre_build_commands,
-        "build_commands": ["mkdir -p build", "npm install", "npm run build"],
-        "buildspec_artifacts": {
-            "files": [
-                "**/*"
-            ],
-            "base-directory": "build"
-        },
-        "artifacts": {
-            "type": "S3",
-            "location": eh.state['destination_bucket_name'],
-            "path": "/", 
-            "namespaceType": "NONE",
-            "name": "/",
-            "packaging": "NONE",
-            "encryptionDisabled": True
-        },
-        "trust_level": trust_level
-        # "post_build_commands": post_build_commands,
-        # "privileged_mode": True
-    }
+    if op == "upsert":
+        component_def = {
+            "s3_bucket": bucket,
+            "s3_object": object_name,
+            "build_container_size": build_container_size,
+            "runtime_versions": {"nodejs": node_version},
+            # "pre_build_commands": pre_build_commands,
+            "build_commands": ["mkdir -p build", "npm install", "npm run build"],
+            "buildspec_artifacts": {
+                "files": [
+                    "**/*"
+                ],
+                "base-directory": "build"
+            },
+            "artifacts": {
+                "type": "S3",
+                "location": eh.state['destination_bucket_name'],
+                "path": "/", 
+                "namespaceType": "NONE",
+                "name": "/",
+                "packaging": "NONE",
+                "encryptionDisabled": True
+            },
+            "trust_level": trust_level
+            # "post_build_commands": post_build_commands,
+            # "privileged_mode": True
+        }
+    else:
+        component_def = {
+            "s3_bucket": bucket,
+            "s3_object": object_name,
+            "trust_level": trust_level
+        }
 
     #Allows for custom overrides as the user sees fit
     component_def.update(codebuild_def)
