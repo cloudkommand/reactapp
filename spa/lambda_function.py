@@ -651,7 +651,7 @@ def copy_output_to_s3(cloudfront):
         for file_name in zip_ref.namelist():
             key = f"{eh.state.get('s3_destination_folder')}/{file_name}" if eh.state.get("s3_destination_folder") else file_name
             for s3_bucket_name in s3_bucket_names:
-                file_bytes = open(file_name, 'rb')
+                file_bytes = open(f"{tmp_directory}/{file_name}", 'rb')
                 s3.put_object(Bucket=s3_bucket_name, Key=key, Body=file_bytes)
                 file_bytes.close()
 
