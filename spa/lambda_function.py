@@ -637,10 +637,13 @@ def copy_output_to_s3(cloudfront):
     # Download the zip file from S3
     obj = s3.get_object(Bucket=build_bucket, Key=build_key)
     zipfile_bytes = io.BytesIO(obj['Body'].read())
+
+    tmp_directory = f"/tmp/{random_id()}"
+    os.mkdir(tmp_directory)
     
     # Extract the contents of the zip file
     with zipfile.ZipFile(zipfile_bytes, 'r') as zip_ref:
-        zip_ref.extractall()
+        zip_ref.extractall(tmp_directory)
     
         # Upload the extracted files to S3
     for file_name in zip_ref.namelist():
