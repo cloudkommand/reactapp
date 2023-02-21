@@ -640,18 +640,20 @@ def copy_output_to_s3(cloudfront):
 
     tmp_directory = f"/tmp/{random_id()}"
     os.mkdir(tmp_directory)
+    print(tmp_directory)
     
     # Extract the contents of the zip file
     with zipfile.ZipFile(zipfile_bytes, 'r') as zip_ref:
         zip_ref.extractall(tmp_directory)
     
-        # Upload the extracted files to S3
-    for file_name in zip_ref.namelist():
-        key = f"{eh.state.get('s3_destination_folder')}/{file_name}" if eh.state.get("s3_destination_folder") else file_name
-        for s3_bucket_name in s3_bucket_names:
-            file_bytes = open(file_name, 'rb')
-            s3.put_object(Bucket=s3_bucket_name, Key=key, Body=file_bytes)
-            file_bytes.close()
+        print(zip_ref.namelist())
+            # Upload the extracted files to S3
+        for file_name in zip_ref.namelist():
+            key = f"{eh.state.get('s3_destination_folder')}/{file_name}" if eh.state.get("s3_destination_folder") else file_name
+            for s3_bucket_name in s3_bucket_names:
+                file_bytes = open(file_name, 'rb')
+                s3.put_object(Bucket=s3_bucket_name, Key=key, Body=file_bytes)
+                file_bytes.close()
 
 
 # Only runs when cloudfront is off
