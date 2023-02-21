@@ -612,7 +612,7 @@ def run_codebuild_build(codebuild_build_def, trust_level):
 
 
 @ext(handler=eh, op="copy_output_to_s3")
-def copy_output_to_s3(cloudfront):
+def copy_output_to_s3(cloudfront, index_document, error_document):
     if cloudfront:
         eh.state['s3_destination_folder'] = str(current_epoch_time_usec_num())
 
@@ -662,7 +662,11 @@ def copy_output_to_s3(cloudfront):
             key = f"{eh.state.get('s3_destination_folder')}/{file_name}" if eh.state.get("s3_destination_folder") else file_name
             for s3_bucket_name in s3_bucket_names:
                 file_bytes = open(f"{tmp_directory}/{file_name}", 'rb')
-                s3.put_object(Bucket=s3_bucket_name, Key=key, Body=file_bytes)
+                s3.put_object(
+                    Bucket=s3_bucket_name, Key=key, Body=file_bytes, 
+                    ContentType="text/html" if file_name.endswith(index_document) or \
+                        file_name.endswith(error_document) else "binary/octet-stream"
+                )
                 file_bytes.close()
 
 
