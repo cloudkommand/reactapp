@@ -574,7 +574,7 @@ def setup_codebuild_project(op, bucket, object_name, build_container_size, node_
     component_def.update(codebuild_def)
 
     eh.invoke_extension(
-        arn=lambda_env("codebuild_project_lambda_name"), 
+        arn=lambda_env("codebuild_project_extension_arn"), 
         component_def=component_def, 
         child_key=CODEBUILD_PROJECT_KEY, progress_start=25, 
         progress_end=30
