@@ -139,7 +139,7 @@ def lambda_handler(event, context):
         setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_project_override_def, trust_level)
         run_codebuild_build(codebuild_build_override_def, trust_level)
         copy_output_to_s3(cloudfront)
-        set_object_metadata(cdef, index_document, error_document, region, domain)
+        set_object_metadata(cdef, index_document, error_document, region, domains)
         setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def)
         
         #Have to do it after CF distribution is gone
@@ -659,27 +659,16 @@ def copy_output_to_s3(cloudfront):
 
 # Only runs when cloudfront is off
 @ext(handler=eh, op="set_object_metadata")
-def set_object_metadata(cdef, index_document, error_document, region, domain):
+def set_object_metadata(cdef, index_document, error_document, region, domains):
 
-    bucket_name = eh.props['S3']['name']
-    key = index_document
-    print(f"bucket_name = {bucket_name}")
-    print(f"key = {key}")
-    # print(f"s3_url_path = {s3_url_path}")
+    s3_bucket_names = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))
+    for bucket_name in s3_bucket_names:
+        key = index_document
+        print(f"bucket_name = {bucket_name}")
+        print(f"key = {key}")
+        # print(f"s3_url_path = {s3_url_path}")
 
-    try:
-        response = s3.copy_object(
-            Bucket=bucket_name,
-            Key=key,
-            CopySource=f"{bucket_name}/{key}",
-            MetadataDirective="REPLACE",
-            CacheControl="max-age=0",
-            ContentType="text/html"
-        )
-        eh.add_log(f"Fixed {index_document}", response)
-
-        if error_document != index_document:
-            key = error_document
+        try:
             response = s3.copy_object(
                 Bucket=bucket_name,
                 Key=key,
@@ -688,13 +677,26 @@ def set_object_metadata(cdef, index_document, error_document, region, domain):
                 CacheControl="max-age=0",
                 ContentType="text/html"
             )
-            eh.add_log(f"Fixed {error_document}", response)
+            eh.add_log(f"Fixed {index_document}", response)
 
-        if (not cdef.get("cloudfront")) and (not domain):
-            eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
-    except botocore.exceptions.ClientError as e:
-        eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
-        eh.retry_error(str(e), 95 if not domain else 85)
+            if error_document != index_document:
+                key = error_document
+                response = s3.copy_object(
+                    Bucket=bucket_name,
+                    Key=key,
+                    CopySource=f"{bucket_name}/{key}",
+                    MetadataDirective="REPLACE",
+                    CacheControl="max-age=0",
+                    ContentType="text/html"
+                )
+                eh.add_log(f"Fixed {error_document}", response)
+
+
+            if (not cdef.get("cloudfront")) and (not domains):
+                eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
+        except botocore.exceptions.ClientError as e:
+            eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
+            eh.retry_error(str(e), 95 if not domain else 85)
 
 @ext(handler=eh, op="setup_cloudfront_distribution")
 def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def):
