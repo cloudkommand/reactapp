@@ -333,7 +333,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
                 # Still don't have Cloudfront
                 s3_domains = domains or {SOLO_KEY: None}
                 for k in prev_s3_states.keys():
-                    if k not in (domains or {}):
+                    if k not in s3_domains:
                         s3_domains[k] = "delete"
                 print(f"s3_domains = {s3_domains}")
             
@@ -618,6 +618,10 @@ def copy_output_to_s3(cloudfront):
     # If cloudfront, we want to copy it to the cloudfront bucket inside a folder.
     # Otherwise, we copy it to the root of the bucket so Route53 serves it directly.
     s3_bucket_names = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))
+    if not s3_bucket_names:
+        eh.perm_error("No S3 Buckets to copy to", 50)
+        eh.add_log("No S3 Buckets. Shouldn't Happen", {"props": eh.props}, is_error=True)
+        return 0
 
     codebuild_project_props = eh.props[CODEBUILD_PROJECT_KEY]
     build_bucket = codebuild_project_props["zip_artifact_bucket"]
