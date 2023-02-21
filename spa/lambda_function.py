@@ -324,7 +324,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
                 # Now have Cloudfront
                 key_1 = list(domains.keys())[0]
                 print(f"key_1 = {key_1}")
-                s3_domains = {SOLO_KEY: prev_s3_states.get(SOLO_KEY, {}).get("name")}
+                s3_domains = {SOLO_KEY: {"domain": prev_s3_states.get(SOLO_KEY, {}).get("name")}}
                 for k in prev_s3_states.keys():
                     if k != SOLO_KEY:
                         s3_domains[k] = "delete"
