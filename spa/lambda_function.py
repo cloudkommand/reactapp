@@ -645,6 +645,7 @@ def copy_output_to_s3(cloudfront):
     # Extract the contents of the zip file
     with zipfile.ZipFile(zipfile_bytes, 'r') as zip_ref:
         zip_ref.extractall(tmp_directory)
+        print(os.listdir(tmp_directory))
     
         print(zip_ref.namelist())
             # Upload the extracted files to S3
