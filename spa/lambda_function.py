@@ -333,7 +333,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
                 # Still don't have Cloudfront
                 s3_domains = domains or {SOLO_KEY: None}
                 for k in prev_s3_states.keys():
-                    if k not in domains:
+                    if k not in (domains or {}):
                         s3_domains[k] = "delete"
                 print(f"s3_domains = {s3_domains}")
             
