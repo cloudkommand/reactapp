@@ -796,6 +796,9 @@ def setup_route53(cdef, prev_state, i=1):
     
     child_key = f"Route53_{domain_key}"
 
+    if prev_state and prev_state.get("props", {}).get(child_key, {}):
+        eh.add_props({child_key: prev_state.get("props", {}).get(child_key, {})})
+
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, links_prefix=f"{domain_key} ",
         child_key=child_key, progress_start=85, progress_end=100
