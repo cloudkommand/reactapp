@@ -6,6 +6,7 @@ import traceback
 import zipfile
 import os
 import io
+import mimetypes
 
 from botocore.exceptions import ClientError
 
@@ -670,16 +671,13 @@ def copy_output_to_s3(cloudfront, index_document, error_document):
             key = f"{eh.state.get('s3_destination_folder')}/{file_name}" if eh.state.get("s3_destination_folder") else file_name
             for s3_bucket_name in s3_bucket_names:
                 file_bytes = open(f"{tmp_directory}/{file_name}", 'rb')
-
-                content_type = None
+                content_type = mimetypes.guess_type(file_name)[0] or 'binary/octet-stream'
                 cache_control = None
-                if file_name.endswith("html"):
-                    content_type = "text/html"
-                elif file_name.endswith("json"):
+                if file_name.endswith("json"):
                     content_type = "binary/octet-stream"
-
                 if file_name in [index_document, error_document]:
                     cache_control = "max-age=0"
+                print(f"Uploading {file_name} with content type {content_type}")
 
                 put_object_args = remove_none_attributes({
                     "Bucket": s3_bucket_name,
