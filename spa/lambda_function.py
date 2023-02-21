@@ -324,9 +324,9 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
                 # Now have Cloudfront
                 key_1 = list(domains.keys())[0]
                 print(f"key_1 = {key_1}")
-                s3_domains = {SOLO_KEY: domains[key_1]}
+                s3_domains = {SOLO_KEY: prev_s3_states.get(SOLO_KEY, {}).get("name")}
                 for k in prev_s3_states.keys():
-                    if k != key_1:
+                    if k != SOLO_KEY:
                         s3_domains[k] = "delete"
                 print(f"s3_domains = {s3_domains}")
             else:
@@ -399,9 +399,12 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
         domain_key = list(eh.state['s3_domains'].keys())[0]
         child_key = f"{S3_KEY}_{domain_key}"
         # Bucket name is the domain name, unless we are using Cloudfront
-        bucket_name = eh.state["s3_domains"][domain_key] if not cloudfront else (
-            prev_state.get("props", {}).get(child_key, {}).get("name") or eh.state["s3_domains"][domain_key]
-        )
+        # Really have 3 cases. If we have cloudfront, we use the last created bucket name
+        # If we have a domain, we use the domain name
+        # If we have neither, we should set it to None.
+        previous_name = prev_state.get("props", {}).get(child_key, {}).get("name")
+        domain_name = (eh.state["s3_domains"][domain_key] or {}).get("domain") #This will be none if there is no domain
+        bucket_name = domain_name if (domain_name and not cloudfront) else (previous_name if previous_name else domain_name)
 
     component_def = remove_none_attributes({
         "name": bucket_name,
@@ -595,14 +598,15 @@ def run_codebuild_build(codebuild_build_def, trust_level):
 
     component_def.update(codebuild_build_def)
 
-    eh.invoke_extension(
+    proceed = eh.invoke_extension(
         arn=lambda_env("codebuild_build_extension_arn"),
         component_def=component_def, 
         child_key=CODEBUILD_BUILD_KEY, progress_start=30, 
         progress_end=45
     )
 
-    eh.add_op("copy_output_to_s3")
+    if proceed:
+        eh.add_op("copy_output_to_s3")
     # eh.add_op("get_final_props")
 
 
@@ -696,7 +700,7 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
                 eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
         except botocore.exceptions.ClientError as e:
             eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
-            eh.retry_error(str(e), 95 if not domain else 85)
+            eh.retry_error(str(e), 95 if not domains else 85)
 
 @ext(handler=eh, op="setup_cloudfront_distribution")
 def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def):
