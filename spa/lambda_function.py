@@ -134,11 +134,11 @@ def lambda_handler(event, context):
         load_initial_props(bucket, object_name)
 
         add_config(bucket, object_name, cdef.get("config"))
-        setup_cloudfront_oai(cdef, oai_override_def)
+        setup_cloudfront_oai(cdef, oai_override_def, prev_state)
         setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
         setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_project_override_def, trust_level)
         run_codebuild_build(codebuild_build_override_def, trust_level)
-        copy_output_to_s3(cloudfront)
+        copy_output_to_s3(cloudfront, index_document, error_document)
         set_object_metadata(cdef, index_document, error_document, region, domains)
         setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def)
         
@@ -272,7 +272,7 @@ def add_config(bucket, object_name, config):
     eh.add_log("Added Config", {"config": config, "filestr": content})
 
 @ext(handler=eh, op="setup_cloudfront_oai")
-def setup_cloudfront_oai(cdef, oai_def):
+def setup_cloudfront_oai(cdef, oai_def, prev_state):
     print(f"props = {eh.props}")
     component_def = remove_none_attributes({
         "existing_id": cdef.get("oai_existing_id")
@@ -281,6 +281,10 @@ def setup_cloudfront_oai(cdef, oai_def):
     component_def.update(oai_def)
 
     function_arn = lambda_env('cloudfront_oai_extension_arn')
+
+    if prev_state.get("props", {}).get(CLOUDFRONT_OAI_KEY, {}):
+        eh.add_props({CLOUDFRONT_OAI_KEY: prev_state.get("props", {}).get(CLOUDFRONT_OAI_KEY, {})})
+
 
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
