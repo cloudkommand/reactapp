@@ -675,8 +675,11 @@ def copy_output_to_s3(cloudfront, index_document, error_document):
                 cache_control = None
                 if file_name.endswith("json"):
                     content_type = "binary/octet-stream"
+                elif file_name.endswith(".js"):
+                    content_type = "application/x-javascript"
                 if file_name in [index_document, error_document]:
                     cache_control = "max-age=0"
+
                 print(f"Uploading {file_name} with content type {content_type}")
 
                 put_object_args = remove_none_attributes({
