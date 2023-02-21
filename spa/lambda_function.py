@@ -316,7 +316,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
                 s3_domains = {SOLO_KEY: "delete", **domains}
                 eh.state['s3_domains'] = s3_domains
             else:
-                s3_domains = {SOLO_KEY: old_s3_props.get("name")}
+                s3_domains = {SOLO_KEY: {"domain": old_s3_props.get("name")}}
                 eh.state['s3_domains'] = s3_domains
             print(f"eh.state['s3_domains'] = {eh.state['s3_domains']}")
         else:
