@@ -206,6 +206,11 @@ def compare_etags(event, bucket, object_name, trust_level):
                 eh.declare_return(200, 100, success=True)
             else: #Code
                 eh.add_log("Zipfile Unchanged, Skipping Build", {"initial_etag": initial_etag, "new_etag": new_etag})
+                eh.add_props({
+                    CODEBUILD_PROJECT_KEY: old_props.get(CODEBUILD_PROJECT_KEY),
+                    CODEBUILD_BUILD_KEY: old_props.get(CODEBUILD_BUILD_KEY),
+                })
+                
                 eh.complete_op("setup_codebuild_project")
                 # eh.add_props({
                 #     "codebuild_project_arn": old_props.get("codebuild_project_arn"),
@@ -659,18 +664,32 @@ def copy_output_to_s3(cloudfront, index_document, error_document):
     with zipfile.ZipFile(zipfile_bytes, 'r') as zip_ref:
         zip_ref.extractall(tmp_directory)
         print(os.listdir(tmp_directory))
-    
         print(zip_ref.namelist())
-            # Upload the extracted files to S3
+        # Upload the extracted files to S3
         for file_name in zip_ref.namelist():
             key = f"{eh.state.get('s3_destination_folder')}/{file_name}" if eh.state.get("s3_destination_folder") else file_name
             for s3_bucket_name in s3_bucket_names:
                 file_bytes = open(f"{tmp_directory}/{file_name}", 'rb')
-                s3.put_object(
-                    Bucket=s3_bucket_name, Key=key, Body=file_bytes, 
-                    ContentType="text/html" if file_name.endswith(index_document) or \
-                        file_name.endswith(error_document) else "binary/octet-stream"
-                )
+
+                content_type = None
+                cache_control = None
+                if file_name.endswith("html"):
+                    content_type = "text/html"
+                elif file_name.endswith("json"):
+                    content_type = "binary/octet-stream"
+
+                if file_name in [index_document, error_document]:
+                    cache_control = "max-age=0"
+
+                put_object_args = remove_none_attributes({
+                    "Bucket": s3_bucket_name,
+                    "Key": key,
+                    "Body": file_bytes,
+                    "ContentType": content_type,
+                    "CacheControl": cache_control
+                })
+
+                s3.put_object(**put_object_args)
                 file_bytes.close()
 
 
