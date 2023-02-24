@@ -68,7 +68,7 @@ def lambda_handler(event, context):
 
         # s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
-        domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
+        domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_uppercase=True, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
         domains = fix_domains(cdef.get("domains")) or ({SOLO_KEY: {"domain": domain}} if domain else None)
         # If you want to specify a hosted zone for route53, you should set domains to:
         # {
