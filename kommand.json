@@ -21,6 +21,7 @@
                 "codebuild_build_extension_arn": "@codebuildactions.runbuild:props.function_arn"
             },
             "download_folder": true,
+            "deployment_timeout_minutes": 30,
             "policy": {
                 "Version": "2012-10-17",
                 "Statement": [{
