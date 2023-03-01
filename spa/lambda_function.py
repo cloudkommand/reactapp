@@ -63,6 +63,10 @@ def lambda_handler(event, context):
         if not eh.state.get("caller_reference"):
             eh.add_state({"caller_reference": caller_reference})
 
+        s3_folder = str(current_epoch_time_usec_num())
+        if not eh.state.get("s3_folder"):
+            eh.add_state({"s3_folder": s3_folder})
+
         build_container_size = cdef.get("build_container_size")
         node_version = cdef.get("node_version") or 10
 
@@ -216,7 +220,10 @@ def compare_etags(event, bucket, object_name, trust_level):
                 eh.add_props({
                     CODEBUILD_PROJECT_KEY: old_props.get(CODEBUILD_PROJECT_KEY),
                     CODEBUILD_BUILD_KEY: old_props.get(CODEBUILD_BUILD_KEY),
+                    "s3_folder": old_props.get("s3_folder") or "",
                 })
+
+                eh.add_state({"s3_folder": old_props.get("s3_folder") or ""})
                 
                 eh.complete_op("setup_codebuild_project")
                 # eh.add_props({
@@ -420,7 +427,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
         # If we have neither, we should set it to None.
         previous_name = prev_state.get("props", {}).get(child_key, {}).get("name")
         domain_name = (eh.state["s3_domains"][domain_key] or {}).get("domain") #This will be none if there is no domain
-        bucket_name = domain_name if (domain_name and not cloudfront) else (previous_name if previous_name else domain_name)
+        bucket_name = domain_name if (domain_name and not cloudfront) else (previous_name if previous_name else cdef.get("s3_bucket_name", domain_name))
 
     component_def = remove_none_attributes({
         "name": bucket_name,
@@ -488,7 +495,7 @@ def setup_codebuild_project(op, bucket, object_name, build_container_size, node_
             "artifacts": {
                 "type": "S3",
                 "location": eh.state['destination_bucket_name'],
-                "path": "/", 
+                "path": f"/{eh.state['s3_folder']}", 
                 "namespaceType": "NONE",
                 "name": "/",
                 "packaging": "NONE",
@@ -646,8 +653,8 @@ def run_codebuild_build(codebuild_build_def, trust_level):
 @ext(handler=eh, op="set_object_metadata")
 def set_object_metadata(cdef, index_document, error_document, region, domains):
     bucket_name = eh.state["destination_bucket_name"]
-
-    key = index_document
+    
+    key = f"{eh.state['s3_folder']}/{index_document}"
     print(f"bucket_name = {bucket_name}")
     print(f"key = {key}")
     # print(f"s3_url_path = {s3_url_path}")
@@ -664,7 +671,7 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
         eh.add_log(f"Fixed {index_document}", response)
 
         if error_document != index_document:
-            key = error_document
+            key = f"{eh.state['s3_folder']}/{error_document}"
             response = s3.copy_object(
                 Bucket=bucket_name,
                 Key=key,
@@ -735,6 +742,7 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
         # "default_root_object": index_document if not eh.state.get("s3_destination_folder") else f"{eh.state.get('s3_destination_folder')}/{index_document}",
         "target_s3_bucket": eh.state.get("destination_bucket_name") or bucket_names[0],
         "default_root_object": index_document,
+        "origin_path": f"/{eh.state.get('s3_folder')}" if eh.state.get("s3_folder") else None,
         "oai_id": eh.props.get(CLOUDFRONT_OAI_KEY, {}).get("id"),
         "existing_id": cdef.get("cloudfront_existing_id"),
         "origin_shield": cdef.get("cloudfront_origin_shield"),
