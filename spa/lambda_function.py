@@ -63,9 +63,7 @@ def lambda_handler(event, context):
         if not eh.state.get("caller_reference"):
             eh.add_state({"caller_reference": caller_reference})
 
-        s3_folder = str(current_epoch_time_usec_num())
-        if not eh.state.get("s3_folder"):
-            eh.add_state({"s3_folder": s3_folder})
+
 
         build_container_size = cdef.get("build_container_size")
         node_version = cdef.get("node_version") or 10
@@ -87,6 +85,12 @@ def lambda_handler(event, context):
         # }
 
         cloudfront = cdef.get("cloudfront")
+
+        #If we are using cloudfront we should be using a folder in S3, this will be a ZDT deployment, otherwise we will just use the root, which will not be ZDT, but that is okay
+        s3_folder = str(current_epoch_time_usec_num()) if cloudfront else ""
+        if not eh.state.get("s3_folder"):
+            eh.add_state({"s3_folder": s3_folder})
+        
         if domains and not isinstance(domains, dict):
             eh.add_log("domains must be a dictionary", {"domains": domains})
             eh.perm_error("Invalid Domains", 0)
