@@ -63,28 +63,34 @@ def lambda_handler(event, context):
         if not eh.state.get("caller_reference"):
             eh.add_state({"caller_reference": caller_reference})
 
-
-
         build_container_size = cdef.get("build_container_size")
         node_version = cdef.get("node_version") or 10
+        
+        cloudfront = cdef.get("cloudfront")
 
-        # s3_url_path = cdef.get("s3_url_path") or "/"
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_uppercase=True, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
-        domains = fix_domains(cdef.get("domains")) or ({SOLO_KEY: {"domain": domain}} if domain else None)
+        domains = cdef.get("domains") or ({SOLO_KEY: {"domain": domain}} if domain else None)
+        
+        try:
+            domains = fix_domains(domains, cloudfront)
+        except Exception as e:
+            eh.add_log(str(e), {"domains": domains, "error": str(e)}, True)
+            eh.perm_error(str(e), 0)
+            return 0
         # If you want to specify a hosted zone for route53, you should set domains to:
         # {
         #     "key": {
-        #         "domain": "example.com",
+        #         "domain": "quark.example.com",
         #         "hosted_zone_id": "Z2FDTNDATAQYW2"
         #     }
         # }
-        # Otherwise you can set it to:
+        # Otherwise, if you are okay with it picking the closest public hosted zone, 
+        # you can set it to:
         # {
-        #    "key": "example.com"
+        #    "key": "quark.example.com"
         # }
 
-        cloudfront = cdef.get("cloudfront")
 
         #If we are using cloudfront we should be using a folder in S3, this will be a ZDT deployment, otherwise we will just use the root, which will not be ZDT, but that is okay
         s3_folder = str(current_epoch_time_usec_num()) if cloudfront else ""
@@ -118,9 +124,12 @@ def lambda_handler(event, context):
             eh.add_op("setup_s3")
             eh.add_op("copy_output_to_s3")
             if cloudfront:
-                eh.add_op("setup_cloudfront_oai")
-                eh.add_op("setup_cloudfront_distribution")
+                eh.add_op("setup_cloudfront_oai", "upsert")
+                eh.add_op("setup_cloudfront_distribution", "upsert")
                 # eh.add_op("invalidate_files")
+            elif prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY):
+                eh.add_op("setup_cloudfront_oai", "delete")
+                eh.add_op("setup_cloudfront_distribution", "delete")
             else:
                 eh.add_op("set_object_metadata")
             if cdef.get("config"):
@@ -133,8 +142,8 @@ def lambda_handler(event, context):
             eh.add_op("setup_s3")
             eh.add_props(prev_state.get("props", {}))
             if cloudfront:
-                eh.add_op("setup_cloudfront_oai")
-                eh.add_op("setup_cloudfront_distribution")
+                eh.add_op("setup_cloudfront_oai", "delete")
+                eh.add_op("setup_cloudfront_distribution", "delete")
             if domains:
                 eh.add_op("setup_route53", domains)
 
@@ -144,9 +153,11 @@ def lambda_handler(event, context):
         load_initial_props(bucket, object_name)
 
         add_config(bucket, object_name, cdef.get("config"))
-        if op == "upsert":
+        if eh.ops['setup_cloudfront_oai'] == "upsert":
             setup_cloudfront_oai(cdef, oai_override_def, prev_state)
-            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
+        if op == "upsert":
+            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront)
+        
         setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_project_override_def, trust_level)
         run_codebuild_build(codebuild_build_override_def, trust_level)
         # copy_output_to_s3(cloudfront, index_document, error_document)
@@ -154,13 +165,12 @@ def lambda_handler(event, context):
         setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def)
         
         #Have to do it after CF distribution is gone
-        if event["op"] == "delete" and not eh.ops.get("setup_cloudfront_distribution") and not eh.state.get("completed_s3"):
-            eh.add_op("setup_s3")
-            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
-
-        if op == "delete":
+        if eh.ops['setup_cloudfront_oai'] == "delete":
             setup_cloudfront_oai(cdef, oai_override_def, prev_state)
+        if op == "delete":
             setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
+        else:
+            delete_s3()
 
         setup_route53(cdef, prev_state)
         # invalidate_files()
@@ -297,6 +307,7 @@ def add_config(bucket, object_name, config):
 @ext(handler=eh, op="setup_cloudfront_oai")
 def setup_cloudfront_oai(cdef, oai_def, prev_state):
     print(f"props = {eh.props}")
+    cloudfront_op = eh.ops["setup_cloudfront_oai"]
     component_def = remove_none_attributes({
         "existing_id": cdef.get("oai_existing_id")
     })
@@ -308,70 +319,50 @@ def setup_cloudfront_oai(cdef, oai_def, prev_state):
     if prev_state.get("props", {}).get(CLOUDFRONT_OAI_KEY, {}):
         eh.add_props({CLOUDFRONT_OAI_KEY: prev_state.get("props", {}).get(CLOUDFRONT_OAI_KEY, {})})
 
-
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
         child_key=CLOUDFRONT_OAI_KEY, progress_start=85, progress_end=100,
-        merge_props=False)
+        merge_props=False, op = cloudfront_op)
     print(f"proceed = {proceed}")
+    if proceed and cloudfront_op == "delete":
+        eh.props.pop(CLOUDFRONT_OAI_KEY, None)
 
 @ext(handler=eh, op="setup_s3", complete_op=False)
-def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op):
-    # Note that this function can be called multiple times if there are multiple domains
-    # and there is no Cloudfront distribution
+def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront):
+    # This is the function to create the S3 bucket and/or maintain it.
+    # Additionally, it checks if the bucket name needs to change, and if so,
+    # it calls the delete s3 function to remove it.
 
-    # State 1: No Cloudfront distribution now.
-    # State 2: No Cloudfront distribution before, but there is now.
-    # State 3: Cloudfront distribution now and before.
+    # State 1: No Cloudfront, No R53
+    # State 2: No Cloudfront, R53. Fixed bucket name in this case.
+    # State 3: Cloudfront, R53
 
-    # If state 3, there will only be one S3 Key, so we should use it
-    # If state 2, there may be multiple S3 Keys, we should just pick one that is currently being used
-    # If state 1, there may be multiple S3 Keys, we need to do all the jumbling.
-    if not eh.state.get("s3_domains"):
-        if prev_state.get("props", {}).get(S3_KEY):
-            prev_state['props'][f"{S3_KEY}_{SOLO_KEY}"] = prev_state['props'][S3_KEY]
+    # We don't need S3 keys anymore, as we are only ever going to have one bucket.
+    # We do need to check if the bucket name has changed.
 
-        # If we used to have cloudfront
-        if prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY):
-            # Used to have Cloudfront. Only one S3 key
-            old_s3_props = prev_state['props'].get(S3_KEY) or prev_state['props'].get(f"{S3_KEY}_{SOLO_KEY}")
-            if domains and not cdef.get("cloudfront"):
-                s3_domains = {SOLO_KEY: "delete", **domains}
-                eh.state['s3_domains'] = s3_domains
-            else:
-                s3_domains = {SOLO_KEY: {"domain": old_s3_props.get("name")}}
-                eh.state['s3_domains'] = s3_domains
-            print(f"eh.state['s3_domains'] = {eh.state['s3_domains']}")
-        else:
-            prev_s3_state_keys = [k for k in prev_state.get("props", {}).keys() if k.startswith(f"{S3_KEY}_")]
-            prev_s3_states = {k.replace(f"{S3_KEY}_", ""): prev_state["props"][k] for k in prev_s3_state_keys}
-            print(f"prev_s3_states = {prev_s3_states}")
-            # Did not previously have Cloudfront
-            if cdef.get("cloudfront"):
-                # Now have Cloudfront
-                key_1 = list(domains.keys())[0]
-                print(f"key_1 = {key_1}")
-                s3_domains = {SOLO_KEY: {"domain": prev_s3_states.get(SOLO_KEY, {}).get("name")}}
-                for k in prev_s3_states.keys():
-                    if k != SOLO_KEY:
-                        s3_domains[k] = "delete"
-                print(f"s3_domains = {s3_domains}")
-            else:
-                # Still don't have Cloudfront
-                s3_domains = domains or {SOLO_KEY: None}
-                for k in prev_s3_states.keys():
-                    if k not in s3_domains:
-                        s3_domains[k] = "delete"
-                print(f"s3_domains = {s3_domains}")
-            
-            eh.state["s3_domains"] = s3_domains
+    # Backwards compatibility
+    if prev_state.get("props", {}).get(f"{S3_KEY}_{SOLO_KEY}"):
+        prev_state['props'][S3_KEY] = prev_state['props'][f"{S3_KEY}_{SOLO_KEY}"]
 
-        # So that retries are handled properly
-        eh.add_op("setup_s3", s3_domains)
+    domain_name = None
+    if domains:
+        domain_name = list(domains.values())[0].get("domain")
+
+    old_bucket_name = prev_state.get("props", {}).get(S3_KEY, {}).get("name")
+    bucket_name = domain_name if (domain_name and not cloudfront) else \
+        (old_bucket_name if old_bucket_name else \
+            cdef.get("s3_bucket_name", domain_name)) #This can be None
+        
+    if old_bucket_name and old_bucket_name != bucket_name:
+        eh.add_op("delete_s3", {"bucket_name": old_bucket_name})
 
     website_configuration = None
     block_public_access = True
     acl = None
+    allow_alternate_bucket_name = True
+    if domain_name and not cloudfront:
+        allow_alternate_bucket_name = False
+
     if cdef.get("cloudfront"):
         bucket_policy = {
             "Version": "2012-10-17",
@@ -388,7 +379,6 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
                 }
             ]
         }
-        allow_alternate_bucket_name = True
 
     else: #No Cloudfront
         bucket_policy = {
@@ -412,26 +402,8 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
         acl = {
             "GrantRead": "uri=http://acs.amazonaws.com/groups/global/AllUsers"
         }
-        allow_alternate_bucket_name = False
 
     function_arn = lambda_env('s3_extension_arn')
-    delete_domain_key_list = [k for k in eh.state["s3_domains"].keys() if eh.state["s3_domains"][k] == "delete"]
-    if delete_domain_key_list:
-        child_key = f"{S3_KEY}_{delete_domain_key_list[0]}"
-        domain_key = delete_domain_key_list[0]
-        bucket_name = prev_state.get("props", {}).get(child_key, {}).get("name")
-        op = "delete"
-
-    else:
-        domain_key = list(eh.state['s3_domains'].keys())[0]
-        child_key = f"{S3_KEY}_{domain_key}"
-        # Bucket name is the domain name, unless we are using Cloudfront
-        # Really have 3 cases. If we have cloudfront, we use the last created bucket name
-        # If we have a domain, we use the domain name
-        # If we have neither, we should set it to None.
-        previous_name = prev_state.get("props", {}).get(child_key, {}).get("name")
-        domain_name = (eh.state["s3_domains"][domain_key] or {}).get("domain") #This will be none if there is no domain
-        bucket_name = domain_name if (domain_name and not cloudfront) else (previous_name if previous_name else cdef.get("s3_bucket_name", domain_name))
 
     component_def = remove_none_attributes({
         "name": bucket_name,
@@ -447,32 +419,36 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, o
 
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
-        child_key=child_key, progress_start=20, progress_end=50,
-        links_prefix = f"{domain_key} " if domain_key != SOLO_KEY else "",
-        merge_props=False, op=op)
+        child_key=S3_KEY, progress_start=20, progress_end=30,
+        links_prefix = S3_KEY,
+        merge_props=False
+    )
+
+    if proceed:
+        # If we have cloudfront, obviously we just attach it to the bucket
+        if cloudfront:
+            eh.add_state({"cloudfront_s3_bucket_name": eh.props[S3_KEY]["name"]})
+        
+        # If we used to have cloudfront, but now we don't, it used to be attached to the old bucket name
+        elif prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY) and eh.ops['delete_s3']:
+            eh.add_state({"cloudfront_s3_bucket_name":eh.ops['delete_s3']})
     print(f"proceed = {proceed}")
 
-    print(domain_key)
-    print(child_key)
-    if proceed:
-        print(eh.state)
-        _ = eh.state['s3_domains'].pop(domain_key)
-        print(eh.state)
-        if eh.state.get('s3_domains'):
-            print(eh.state.get("s3_domains"))
-            eh.add_op("setup_s3", s3_domains)
-            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
-        else:
-            # This goes with the codebuild project changes.
-            if not eh.state.get("destination_bucket_name"):
-                if op == "upsert":
-                    destination_bucket_name = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))[0]
-                else:
-                    destination_bucket_name = bucket_name
-                eh.add_state({"destination_bucket_name": destination_bucket_name})
-            ##############################################
-            eh.complete_op("setup_s3")
-            eh.add_state({"completed_s3": True})
+@ext(handler=eh, op="delete_s3")
+def delete_s3():
+    bucket_name = eh.ops["delete_s3"]
+    function_arn = lambda_env('s3_extension_arn')
+
+    component_def = remove_none_attributes({
+        "name": bucket_name
+    })
+
+    eh.invoke_extension(
+        arn=function_arn, component_def=component_def,
+        child_key=S3_KEY, progress_start=30, 
+        progress_end=33, links_prefix = S3_KEY,
+        op="delete"
+    )
 
 @ext(handler=eh, op="setup_codebuild_project")
 def setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_def, trust_level):
@@ -498,7 +474,7 @@ def setup_codebuild_project(op, bucket, object_name, build_container_size, node_
             },
             "artifacts": {
                 "type": "S3",
-                "location": eh.state['destination_bucket_name'],
+                "location": eh.props[S3_KEY]["name"],
                 "path": f"/{eh.state['s3_folder']}", 
                 "namespaceType": "NONE",
                 "name": "/",
@@ -656,7 +632,7 @@ def run_codebuild_build(codebuild_build_def, trust_level):
 
 @ext(handler=eh, op="set_object_metadata")
 def set_object_metadata(cdef, index_document, error_document, region, domains):
-    bucket_name = eh.state["destination_bucket_name"]
+    bucket_name = eh.props[S3_KEY]["name"]
     
     key = f"{eh.state['s3_folder']}/{index_document}"
     print(f"bucket_name = {bucket_name}")
@@ -693,58 +669,25 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
         eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
         eh.retry_error(str(e), 95 if not domains else 85)
 
-# Only runs when cloudfront is off
-# @ext(handler=eh, op="set_object_metadata")
-# def set_object_metadata(cdef, index_document, error_document, region, domains):
-
-#     s3_bucket_names = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))
-#     for bucket_name in s3_bucket_names:
-#         key = index_document
-#         print(f"bucket_name = {bucket_name}")
-#         print(f"key = {key}")
-#         # print(f"s3_url_path = {s3_url_path}")
-
-#         try:
-#             response = s3.copy_object(
-#                 Bucket=bucket_name,
-#                 Key=key,
-#                 CopySource=f"{bucket_name}/{key}",
-#                 MetadataDirective="REPLACE",
-#                 CacheControl="max-age=0",
-#                 ContentType="text/html"
-#             )
-#             eh.add_log(f"Fixed {index_document}", response)
-
-#             if error_document != index_document:
-#                 key = error_document
-#                 response = s3.copy_object(
-#                     Bucket=bucket_name,
-#                     Key=key,
-#                     CopySource=f"{bucket_name}/{key}",
-#                     MetadataDirective="REPLACE",
-#                     CacheControl="max-age=0",
-#                     ContentType="text/html"
-#                 )
-#                 eh.add_log(f"Fixed {error_document}", response)
-
-
-#             if (not cdef.get("cloudfront")) and (not domains):
-#                 eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
-#         except botocore.exceptions.ClientError as e:
-#             eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
-#             eh.retry_error(str(e), 95 if not domains else 85)
 
 @ext(handler=eh, op="setup_cloudfront_distribution")
 def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def):
+    cloudfront_op = eh.ops['setup_cloudfront_distribution']
     print(f"props = {eh.props}")
 
-    S3 = eh.props.get(f"{S3_KEY}_{SOLO_KEY}", {})
-    bucket_names = list(map(lambda x: x['name'], [v for k, v in eh.props.items() if k.startswith(f"{S3_KEY}_")]))
+    # For the removal in-situ
+    if prev_state.get("props", {}).get(CLOUDFRONT_OAI_KEY) and not eh.props.get(CLOUDFRONT_OAI_KEY):
+        eh.add_props({CLOUDFRONT_OAI_KEY: prev_state["props"][CLOUDFRONT_OAI_KEY]})
+
+    # To maintain IDs
+    if prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY, {}):
+        eh.add_props({CLOUDFRONT_DISTRIBUTION_KEY: prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY, {})})
+
     component_def = remove_none_attributes({
         "aliases": list(set(map(lambda x: x['domain'], domains.values()))),
         # "target_s3_bucket": S3.get("name"),
         # "default_root_object": index_document if not eh.state.get("s3_destination_folder") else f"{eh.state.get('s3_destination_folder')}/{index_document}",
-        "target_s3_bucket": eh.state.get("destination_bucket_name") or bucket_names[0],
+        "target_s3_bucket": eh.state["cloudfront_s3_bucket_name"],
         "default_root_object": index_document,
         "origin_path": f"/{eh.state.get('s3_folder')}" if eh.state.get("s3_folder") else None,
         "oai_id": eh.props.get(CLOUDFRONT_OAI_KEY, {}).get("id"),
@@ -766,9 +709,6 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
         "tags": cdef.get("cloudfront_tags")
     })
 
-    if prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY, {}):
-        eh.add_props({CLOUDFRONT_DISTRIBUTION_KEY: prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY, {})})
-
     component_def.update(cloudfront_distribution_override_def)
 
     function_arn = lambda_env('cloudfront_distribution_extension_arn')
@@ -776,11 +716,13 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
     proceed = eh.invoke_extension(
         arn=function_arn, component_def=component_def, 
         child_key=CLOUDFRONT_DISTRIBUTION_KEY, progress_start=65, progress_end=85,
-        merge_props=False)
+        merge_props=False, op=cloudfront_op
+    )
+    if proceed and cloudfront_op == "delete":
+        eh.props.pop(CLOUDFRONT_DISTRIBUTION_KEY, None)
+
     print(f"proceed = {proceed}")
         
-
-
 @ext(handler=eh, op="setup_route53", complete_op=False)
 def setup_route53(cdef, prev_state, i=1):
     print(f"props = {eh.props}")
@@ -867,15 +809,27 @@ def form_domain(bucket, base_domain):
     else:
         return None
 
-def fix_domains(domains):
-    if domains:
-        retval = {}
+def fix_domains(domains, cloudfront):
+    retval = {}
+    if domains and cloudfront:
         for domain_key, domain in domains.items():
             if isinstance(domain, str):
                 retval[domain_key] = {"domain": domain}
             else:
                 retval[domain_key] = domain
-        return retval
+    elif cloudfront:
+        raise Exception("Must Provide Domain When Using Cloudfront")
+    elif domains:
+        if len(domains.keys()) > 1:
+            raise Exception("Only One Domain Allowed Without Cloudfront")
+        else:
+            for domain_key, domain in domains.items():
+                if isinstance(domain, str):
+                    retval[domain_key] = {"domain": domain}
+                else:
+                    retval[domain_key] = domain
+    return retval
+    
 
 # @ext(handler=eh, op="check_invalidation_complete")
 # def check_invalidation_complete():
