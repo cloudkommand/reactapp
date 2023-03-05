@@ -24,6 +24,7 @@ CODEBUILD_BUILD_KEY = "Codebuild Build"
 CLOUDFRONT_OAI_KEY = "OAI"
 CLOUDFRONT_DISTRIBUTION_KEY = "Distribution"
 S3_KEY = "S3"
+ROUTE53_KEY = "Route53"
 
 cloudfront = boto3.client("cloudfront")
 s3 = boto3.client('s3')
@@ -70,7 +71,7 @@ def lambda_handler(event, context):
 
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_uppercase=True, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
-        domains = cdef.get("domains") or ({SOLO_KEY: {"domain": domain}} if domain else None)
+        domains = cdef.get("domains") or ({SOLO_KEY: {"domain": domain}} if domain else {})
         
         try:
             domains = fix_domains(domains, cloudfront)
@@ -134,7 +135,8 @@ def lambda_handler(event, context):
                 eh.add_op("set_object_metadata")
             if cdef.get("config"):
                 eh.add_op("add_config")
-            if domains:
+            print(prev_state.get("props", {}).keys())
+            if domains or len(list(filter(lambda x: x.startswith(ROUTE53_KEY), prev_state.get("props", {}).keys()))):
                 eh.add_op("setup_route53", domains)
 
         elif op == "delete":
@@ -748,7 +750,7 @@ def setup_route53(cdef, prev_state, i=1):
 
     function_arn = lambda_env('route53_extension_arn')
     
-    child_key = f"Route53_{domain_key}"
+    child_key = f"{ROUTE53_KEY}_{domain_key}"
 
     if prev_state and prev_state.get("props", {}).get(child_key, {}):
         eh.add_props({child_key: prev_state.get("props", {}).get(child_key, {})})
