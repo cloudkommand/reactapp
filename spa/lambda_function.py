@@ -116,27 +116,8 @@ def lambda_handler(event, context):
         if event.get("pass_back_data"):
             print(f"pass_back_data found")
         elif op == "upsert":
-            if trust_level in ["full", "code"]:
-                eh.add_op("compare_defs")
-            else: #In case we want to change the trust level later
-                eh.add_op("load_initial_props")
-            
-            eh.add_op("setup_codebuild_project")
-            eh.add_op("setup_s3")
-            eh.add_op("copy_output_to_s3")
-            if cloudfront:
-                eh.add_op("setup_cloudfront_oai", "upsert")
-                eh.add_op("setup_cloudfront_distribution", "upsert")
-                # eh.add_op("invalidate_files")
-            elif prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY):
-                eh.add_op("setup_cloudfront_oai", "delete")
-                eh.add_op("setup_cloudfront_distribution", "delete")
-            else:
-                eh.add_op("set_object_metadata")
-            if cdef.get("config"):
-                eh.add_op("add_config")
-            print(prev_state.get("props", {}).keys())
-            if domains or len(list(filter(lambda x: x.startswith(ROUTE53_KEY), prev_state.get("props", {}).keys()))):
+            r53_keys = list(filter(lambda x: x.startswith(ROUTE53_KEY), prev_state.get("props", {}).keys()))
+            if domains or r53_keys:
                 domain_keys = list(domains.keys())
                 prev_domain_keys = list(map(lambda x: x[8:], filter(lambda x: x.startswith(ROUTE53_KEY), prev_state.get("props", {}).keys())))
                 print(prev_domain_keys)
@@ -148,6 +129,29 @@ def lambda_handler(event, context):
                 }
                 eh.add_op("setup_route53", {"upsert": domains, "delete": old_domains})
 
+            if trust_level in ["full", "code"]:
+                eh.add_op("compare_defs")
+            else: #In case we want to change the trust level later
+                eh.add_op("load_initial_props")
+            
+            eh.add_op("setup_codebuild_project")
+            eh.add_op("setup_s3")
+            eh.add_op("copy_output_to_s3")
+            if cloudfront:
+                eh.add_op("setup_cloudfront_oai", "upsert")
+                eh.add_op("setup_cloudfront_distribution", {"op": "upsert"})
+                # eh.add_op("invalidate_files")
+            elif prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY):
+                eh.add_op("setup_cloudfront_oai", "delete")
+                eh.add_op("setup_cloudfront_distribution", {
+                    "op": "delete", "aliases": list(map(lambda x: x["domain"], old_domains.values()))
+                })
+            else:
+                eh.add_op("set_object_metadata")
+            if cdef.get("config"):
+                eh.add_op("add_config")
+            print(prev_state.get("props", {}).keys())
+            
         elif op == "delete":
             eh.add_op("setup_codebuild_project")
             eh.add_op("setup_s3")
@@ -155,7 +159,7 @@ def lambda_handler(event, context):
             if cloudfront:
                 eh.add_state({"cloudfront_s3_bucket_name": eh.props[S3_KEY]["name"]})
                 eh.add_op("setup_cloudfront_oai", "delete")
-                eh.add_op("setup_cloudfront_distribution", "delete")
+                eh.add_op("setup_cloudfront_distribution", {"op":"delete"})
             if domains:
                 eh.add_op("setup_route53", {"delete": domains})
 
@@ -689,7 +693,12 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
 
 @ext(handler=eh, op="setup_cloudfront_distribution")
 def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def):
-    cloudfront_op = eh.ops['setup_cloudfront_distribution']
+    # This handles the case where we were using cloudfront and we stopped using it.
+    cloudfront_op = eh.ops['setup_cloudfront_distribution'].get("op")
+    cloudfront_aliases = list(set(map(lambda x: x['domain'], domains.values())))
+    if not cloudfront_aliases:
+        cloudfront_aliases = eh.ops['setup_cloudfront_distribution'].get("aliases")
+    
     print(f"props = {eh.props}")
 
     # For the removal in-situ
@@ -701,7 +710,7 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
         eh.add_props({CLOUDFRONT_DISTRIBUTION_KEY: prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY, {})})
 
     component_def = remove_none_attributes({
-        "aliases": list(set(map(lambda x: x['domain'], domains.values()))),
+        "aliases": cloudfront_aliases,
         # "target_s3_bucket": S3.get("name"),
         # "default_root_object": index_document if not eh.state.get("s3_destination_folder") else f"{eh.state.get('s3_destination_folder')}/{index_document}",
         "target_s3_bucket": eh.state["cloudfront_s3_bucket_name"],
