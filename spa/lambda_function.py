@@ -834,6 +834,10 @@ def setup_route53(cdef, prev_state, i=1):
 
 #Note that invalidate files and checking for it should really be its own plugin.
 #Not doing this atm, because cloudfront will be changing its root object.
+
+#Note: You can have a max of 3,000 path invalidation requests in progress at once. A wildcard '*' request can invalidate a max of 15 paths at once so if your app contains more than 15 files, you will need to remove each path manually in your deployment script, not using the wild card path.
+# https://dev.to/shane/how-to-create-an-aws-s3-hosted-angular-app-with-a-custom-domain-https-and-continuous-deployment-2i3i
+
 @ext(handler=eh, op="invalidate_files")
 def invalidate_files():
     distribution_id = eh.props[CLOUDFRONT_DISTRIBUTION_KEY]['id']
