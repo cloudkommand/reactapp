@@ -793,8 +793,11 @@ def setup_route53(cdef, prev_state, i=1):
         if route53_op == "delete":
             del delete_domains[domain_key]
         else:
-            link_name = f"{domain_key} Website URL" 
-            eh.add_links({link_name: f'https://{eh.props[child_key].get("domain")}'})
+            link_name = f"{domain_key} Website URL"
+            if cdef.get("cloudfront"):
+                eh.add_links({link_name: f'https://{eh.props[child_key].get("domain")}'})
+            else:
+                eh.add_links({link_name: f'http://{eh.props[child_key].get("domain")}'})
             del upsert_domains[domain_key]
         if delete_domains or upsert_domains:
             eh.add_op("setup_route53", {"delete": delete_domains, "upsert": upsert_domains})
