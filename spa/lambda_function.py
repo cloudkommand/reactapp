@@ -168,7 +168,7 @@ def lambda_handler(event, context):
         if eh.ops.get('setup_cloudfront_oai') == "upsert":
             setup_cloudfront_oai(cdef, oai_override_def, prev_state)
         if op == "upsert":
-            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront)
+            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront, op)
         
         setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_project_override_def, trust_level)
         run_codebuild_build(codebuild_build_override_def, trust_level)
@@ -180,7 +180,7 @@ def lambda_handler(event, context):
         if eh.ops.get('setup_cloudfront_oai') == "delete":
             setup_cloudfront_oai(cdef, oai_override_def, prev_state)
         if op == "delete":
-            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
+            setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront, op)
         else:
             delete_s3()
 
@@ -340,7 +340,7 @@ def setup_cloudfront_oai(cdef, oai_def, prev_state):
         eh.props.pop(CLOUDFRONT_OAI_KEY, None)
 
 @ext(handler=eh, op="setup_s3")
-def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront):
+def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront, op):
     # This is the function to create the S3 bucket and/or maintain it.
     # Additionally, it checks if the bucket name needs to change, and if so,
     # it calls the delete s3 function to remove it.
@@ -377,7 +377,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, c
     if domain_name and not cloudfront:
         allow_alternate_bucket_name = False
 
-    if cdef.get("cloudfront"):
+    if cdef.get("cloudfront") and op == "upsert":
         bucket_policy = {
             "Version": "2012-10-17",
             "Id": "BucketPolicyCloudfront",
