@@ -764,6 +764,20 @@ def setup_route53(cdef, prev_state, i=1):
             eh.perm_error("'domains' dictionary must contain a 'domain' key inside the domain key")
             return
 
+        if prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY, {}):
+            component_def = remove_none_attributes({
+                "domain": domain,
+                "route53_hosted_zone_id": hosted_zone_id,
+                "alias_target_type": "cloudfront",
+                "target_cloudfront_domain_name": prev_state['props'][CLOUDFRONT_DISTRIBUTION_KEY]["domain_name"]
+            })
+        else:
+            S3 = prev_state.get("props", {}).get(S3_KEY, {})
+            component_def = {
+                "target_s3_region": S3.get("region"),
+                "target_s3_bucket": S3.get("name")
+            }
+
     elif upsert_domains:
         route53_op = "upsert"
         domain_key = list(upsert_domains.keys())[0]
@@ -773,19 +787,19 @@ def setup_route53(cdef, prev_state, i=1):
             eh.perm_error("'domains' dictionary must contain a 'domain' key inside the domain key")
             return
 
-    if cdef.get("cloudfront"):
-        component_def = remove_none_attributes({
-            "domain": domain,
-            "route53_hosted_zone_id": hosted_zone_id,
-            "alias_target_type": "cloudfront",
-            "target_cloudfront_domain_name": None if route53_op == "delete" else eh.props[CLOUDFRONT_DISTRIBUTION_KEY]["domain_name"]
-        })
-    else:
-        S3 = eh.props.get(S3_KEY, {})
-        component_def = {
-            "target_s3_region": S3.get("region"),
-            "target_s3_bucket": S3.get("name")
-        }
+        if cdef.get("cloudfront"):
+            component_def = remove_none_attributes({
+                "domain": domain,
+                "route53_hosted_zone_id": hosted_zone_id,
+                "alias_target_type": "cloudfront",
+                "target_cloudfront_domain_name": None if route53_op == "delete" else eh.props[CLOUDFRONT_DISTRIBUTION_KEY]["domain_name"]
+            })
+        else:
+            S3 = eh.props.get(S3_KEY, {})
+            component_def = {
+                "target_s3_region": S3.get("region"),
+                "target_s3_bucket": S3.get("name")
+            }
 
     function_arn = lambda_env('route53_extension_arn')
     
