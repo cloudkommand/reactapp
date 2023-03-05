@@ -146,6 +146,7 @@ def lambda_handler(event, context):
                 eh.add_op("setup_cloudfront_distribution", {
                     "op": "delete", "aliases": list(map(lambda x: x["domain"], old_domains.values()))
                 })
+                eh.add_op("set_object_metadata")
             else:
                 eh.add_op("set_object_metadata")
             if cdef.get("config"):
