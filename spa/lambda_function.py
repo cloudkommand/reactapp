@@ -137,7 +137,16 @@ def lambda_handler(event, context):
                 eh.add_op("add_config")
             print(prev_state.get("props", {}).keys())
             if domains or len(list(filter(lambda x: x.startswith(ROUTE53_KEY), prev_state.get("props", {}).keys()))):
-                eh.add_op("setup_route53", domains)
+                domain_keys = list(domains.keys())
+                prev_domain_keys = list(map(lambda x: x[8:], filter(lambda x: x.startswith(ROUTE53_KEY), prev_state.get("props", {}).keys())))
+                print(prev_domain_keys)
+                old_domains = {k: 
+                    {
+                        "domain": prev_state['props'][f"{ROUTE53_KEY}_{k}"]['domain'],
+                        "hosted_zone_id": prev_state['props'][f"{ROUTE53_KEY}_{k}"]['route53_hosted_zone_id']
+                    } for k in (set(prev_domain_keys) - set(domain_keys))
+                }
+                eh.add_op("setup_route53", {"upsert": domains, "delete": old_domains})
 
         elif op == "delete":
             eh.add_op("setup_codebuild_project")
@@ -147,7 +156,7 @@ def lambda_handler(event, context):
                 eh.add_op("setup_cloudfront_oai", "delete")
                 eh.add_op("setup_cloudfront_distribution", "delete")
             if domains:
-                eh.add_op("setup_route53", domains)
+                eh.add_op("setup_route53", {"delete": domains})
 
         compare_defs(event)
         compare_etags(event, bucket, object_name, trust_level)
@@ -730,18 +739,33 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
 @ext(handler=eh, op="setup_route53", complete_op=False)
 def setup_route53(cdef, prev_state, i=1):
     print(f"props = {eh.props}")
-    available_domains = eh.ops["setup_route53"]
-    domain_key = list(available_domains.keys())[0]
-    domain = available_domains[domain_key].get("domain")
-    if not domain:
-        eh.perm_error("'domains' dictionary must contain a 'domain' key inside the domain key")
-        return
+    op_val = eh.ops["setup_route53"]
+    delete_domains = op_val.get("delete")
+    upsert_domains = op_val.get("upsert")
+    if delete_domains:
+        route53_op = "delete"
+        domain_key = list(delete_domains.keys())[0]
+        domain = delete_domains[domain_key].get("domain")
+        hosted_zone_id = delete_domains[domain_key].get("hosted_zone_id")
+        if not domain:
+            eh.perm_error("'domains' dictionary must contain a 'domain' key inside the domain key")
+            return
+
+    elif upsert_domains:
+        route53_op = "upsert"
+        domain_key = list(upsert_domains.keys())[0]
+        domain = upsert_domains[domain_key].get("domain")
+        hosted_zone_id = upsert_domains[domain_key].get("hosted_zone_id")
+        if not domain:
+            eh.perm_error("'domains' dictionary must contain a 'domain' key inside the domain key")
+            return
+
     if cdef.get("cloudfront"):
         component_def = remove_none_attributes({
             "domain": domain,
-            "route53_hosted_zone_id": available_domains[domain_key].get("hosted_zone_id"),
+            "route53_hosted_zone_id": hosted_zone_id,
             "alias_target_type": "cloudfront",
-            "target_cloudfront_domain_name": eh.props["Distribution"]["domain_name"]
+            "target_cloudfront_domain_name": eh.props[CLOUDFRONT_DISTRIBUTION_KEY]["domain_name"]
         })
     else:
         S3 = eh.props.get(S3_KEY, {})
@@ -758,17 +782,21 @@ def setup_route53(cdef, prev_state, i=1):
         eh.add_props({child_key: prev_state.get("props", {}).get(child_key, {})})
 
     proceed = eh.invoke_extension(
-        arn=function_arn, component_def=component_def, links_prefix=f"{domain_key} ",
-        child_key=child_key, progress_start=85, progress_end=100
+        arn=function_arn, component_def=component_def, 
+        links_prefix=f"{domain_key} ", child_key=child_key, 
+        progress_start=85, progress_end=100, op=route53_op
     )
 
     if proceed:
         link_name = f"{domain_key} Website URL" 
         # if (i != 1) or (len(list(available_domains.keys())) > 1) else "Website URL"
         eh.add_links({link_name: f'https://{eh.props[child_key].get("domain")}'})
-        _ = available_domains.pop(domain_key)
-        if available_domains:
-            eh.add_op("setup_route53", available_domains)
+        if route53_op == "delete":
+            del delete_domains[domain_key]
+        else:
+            del upsert_domains[domain_key]
+        if delete_domains or upsert_domains:
+            eh.add_op("setup_route53", {"delete": delete_domains, "upsert": upsert_domains})
             setup_route53(cdef, prev_state, i=i+1)
         else:
             eh.complete_op("setup_route53")
@@ -777,7 +805,7 @@ def setup_route53(cdef, prev_state, i=1):
 #Not doing this atm, because cloudfront will be changing its root object.
 @ext(handler=eh, op="invalidate_files")
 def invalidate_files():
-    distribution_id = eh.props['Distribution']['id']
+    distribution_id = eh.props[CLOUDFRONT_DISTRIBUTION_KEY]['id']
 
     try:
         response = cloudfront.create_invalidation(
@@ -874,58 +902,6 @@ def fix_domains(domains, cloudfront):
 #         print(f"copy_object response = {response}")
 #     except ClientError as e:
 #         handle_common_errors(e, eh, "Copying Zipfile Failed", 15)
-
-# @ext(handler=eh, op="setup_status_objects")
-# def setup_status_objects(bucket):
-#     s3 = boto3.client("s3")
-#     print(f"setup_status_objects")
-
-#     try:
-#         response = s3.get_object(Bucket=bucket, Key=ERROR_FILE)
-#         eh.add_log("Status Objects Exist", {"bucket": bucket, "success": SUCCESS_FILE, "error": ERROR_FILE})
-#     except botocore.exceptions.ClientError as e:
-#         if e.response['Error']['Code'] == "NoSuchKey":
-#             try:
-#                 success = {"value": "success"}
-#                 s3.put_object(
-#                     Body=json.dumps(success),
-#                     Bucket=bucket,
-#                     Key=SUCCESS_FILE
-#                 )
-
-#                 error = {"value": "error"}
-#                 s3.put_object(
-#                     Body=json.dumps(error),
-#                     Bucket=bucket,
-#                     Key=ERROR_FILE
-#                 )
-        
-#                 eh.add_log("Status Objects Created", {"bucket": bucket, "success": SUCCESS_FILE, "error": ERROR_FILE})
-#             except:
-#                 eh.add_log("Error Writing Status Objects", {"error": str(e)}, True)
-#                 eh.retry_error(str(e), 10)
-
-#         else:
-#             eh.add_log("Error Getting Status Object", {"error": str(e)}, True)
-#             eh.retry_error(str(e), 10)
-
-
-
-
-# @ext(handler=eh, op="get_codebuild_project")
-# def get_codebuild_project():
-#     codebuild = boto3.client('codebuild')
-
-#     codebuild_project_name = eh.ops['remove_codebuild_project'].get("name")
-#     car = eh.ops['remove_codebuild_project'].get("create_and_remove")
-
-#     try:
-#         response = codebuild.batch_get_projects(names=[codebuild_project_name])
-#         if response.get("projects")[0]:
-#             eh.add_log("Found Codebuild Project", )
-#     except botocore.exceptions.ClientError as e:
-#         eh.add_log("Remove Codebuild Error", {"error": str(e)}, True)
-#         eh.retry_error(str(e), 60 if car else 15)
 
 
 # CODEBUILD_RUNTIME_TO_IMAGE_MAPPING = {
