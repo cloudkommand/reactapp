@@ -155,7 +155,7 @@ def lambda_handler(event, context):
         load_initial_props(bucket, object_name)
 
         add_config(bucket, object_name, cdef.get("config"))
-        if eh.ops['setup_cloudfront_oai'] == "upsert":
+        if eh.ops.get('setup_cloudfront_oai') == "upsert":
             setup_cloudfront_oai(cdef, oai_override_def, prev_state)
         if op == "upsert":
             setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront)
@@ -167,7 +167,7 @@ def lambda_handler(event, context):
         setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def)
         
         #Have to do it after CF distribution is gone
-        if eh.ops['setup_cloudfront_oai'] == "delete":
+        if eh.ops.get('setup_cloudfront_oai') == "delete":
             setup_cloudfront_oai(cdef, oai_override_def, prev_state)
         if op == "delete":
             setup_s3(cname, cdef, domains, index_document, error_document, prev_state, op)
