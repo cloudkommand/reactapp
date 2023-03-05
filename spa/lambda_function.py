@@ -766,7 +766,7 @@ def setup_route53(cdef, prev_state, i=1):
             "domain": domain,
             "route53_hosted_zone_id": hosted_zone_id,
             "alias_target_type": "cloudfront",
-            "target_cloudfront_domain_name": eh.props[CLOUDFRONT_DISTRIBUTION_KEY]["domain_name"]
+            "target_cloudfront_domain_name": None if route53_op == "delete" else eh.props[CLOUDFRONT_DISTRIBUTION_KEY]["domain_name"]
         })
     else:
         S3 = eh.props.get(S3_KEY, {})
