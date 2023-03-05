@@ -350,6 +350,8 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, c
     if domains:
         domain_name = list(domains.values())[0].get("domain")
 
+    # Note that this means that if you deploy, then set s3_bucket_name, 
+    # the bucket name does not change.
     old_bucket_name = prev_state.get("props", {}).get(S3_KEY, {}).get("name")
     bucket_name = domain_name if (domain_name and not cloudfront) else \
         (old_bucket_name if old_bucket_name else \
@@ -763,7 +765,7 @@ def setup_route53(cdef, prev_state, i=1):
     if proceed:
         link_name = f"{domain_key} Website URL" 
         # if (i != 1) or (len(list(available_domains.keys())) > 1) else "Website URL"
-        eh.add_links({link_name: f'http://{eh.props[child_key].get("domain")}'})
+        eh.add_links({link_name: f'https://{eh.props[child_key].get("domain")}'})
         _ = available_domains.pop(domain_key)
         if available_domains:
             eh.add_op("setup_route53", available_domains)
