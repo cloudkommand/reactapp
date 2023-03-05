@@ -444,12 +444,12 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, c
         
         # If we used to have cloudfront, but now we don't, it used to be attached to the old bucket name
         elif prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY) and eh.ops['delete_s3']:
-            eh.add_state({"cloudfront_s3_bucket_name":eh.ops['delete_s3']})
+            eh.add_state({"cloudfront_s3_bucket_name":eh.ops['delete_s3']['bucket_name']})
     print(f"proceed = {proceed}")
 
 @ext(handler=eh, op="delete_s3")
 def delete_s3():
-    bucket_name = eh.ops["delete_s3"]
+    bucket_name = eh.ops["delete_s3"].get("bucket_name")
     function_arn = lambda_env('s3_extension_arn')
 
     component_def = remove_none_attributes({
@@ -458,8 +458,8 @@ def delete_s3():
 
     eh.invoke_extension(
         arn=function_arn, component_def=component_def,
-        child_key=S3_KEY, progress_start=30, 
-        progress_end=33, links_prefix = S3_KEY,
+        child_key=f"{S3_KEY}_delete", progress_start=82, 
+        progress_end=85, links_prefix = f"{S3_KEY}_delete",
         op="delete"
     )
 
