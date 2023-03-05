@@ -438,14 +438,17 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, c
         merge_props=False
     )
 
-    if proceed:
+    if proceed and not eh.state.get("cloudfront_s3_bucket_name"):
         # If we have cloudfront, obviously we just attach it to the bucket
         if cloudfront:
             eh.add_state({"cloudfront_s3_bucket_name": eh.props[S3_KEY]["name"]})
         
-        # If we used to have cloudfront, but now we don't, it used to be attached to the old bucket name
-        elif prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY) and eh.ops['delete_s3']:
-            eh.add_state({"cloudfront_s3_bucket_name":eh.ops['delete_s3']['bucket_name']})
+        # If we used to have cloudfront, but now we don't, it used to be attached 
+        # to the old bucket name, which might be the same as the new bucket name.
+        elif prev_state.get("props", {}).get(CLOUDFRONT_DISTRIBUTION_KEY):
+            eh.add_state({
+                "cloudfront_s3_bucket_name": eh.ops.get('delete_s3', {}).get('bucket_name') or eh.props.get(S3_KEY, {}).get('name')         
+            })
     print(f"proceed = {proceed}")
 
 @ext(handler=eh, op="delete_s3")
