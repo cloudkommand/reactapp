@@ -153,6 +153,7 @@ def lambda_handler(event, context):
             eh.add_op("setup_s3")
             eh.add_props(prev_state.get("props", {}))
             if cloudfront:
+                eh.add_state({"cloudfront_s3_bucket_name": eh.props[S3_KEY]["name"]})
                 eh.add_op("setup_cloudfront_oai", "delete")
                 eh.add_op("setup_cloudfront_distribution", "delete")
             if domains:
@@ -788,12 +789,12 @@ def setup_route53(cdef, prev_state, i=1):
     )
 
     if proceed:
-        link_name = f"{domain_key} Website URL" 
         # if (i != 1) or (len(list(available_domains.keys())) > 1) else "Website URL"
-        eh.add_links({link_name: f'https://{eh.props[child_key].get("domain")}'})
         if route53_op == "delete":
             del delete_domains[domain_key]
         else:
+            link_name = f"{domain_key} Website URL" 
+            eh.add_links({link_name: f'https://{eh.props[child_key].get("domain")}'})
             del upsert_domains[domain_key]
         if delete_domains or upsert_domains:
             eh.add_op("setup_route53", {"delete": delete_domains, "upsert": upsert_domains})
