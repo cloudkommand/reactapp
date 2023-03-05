@@ -329,7 +329,7 @@ def setup_cloudfront_oai(cdef, oai_def, prev_state):
     if proceed and cloudfront_op == "delete":
         eh.props.pop(CLOUDFRONT_OAI_KEY, None)
 
-@ext(handler=eh, op="setup_s3", complete_op=False)
+@ext(handler=eh, op="setup_s3")
 def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, cloudfront):
     # This is the function to create the S3 bucket and/or maintain it.
     # Additionally, it checks if the bucket name needs to change, and if so,
@@ -636,7 +636,7 @@ def run_codebuild_build(codebuild_build_def, trust_level):
 def set_object_metadata(cdef, index_document, error_document, region, domains):
     bucket_name = eh.props[S3_KEY]["name"]
     
-    key = f"{eh.state['s3_folder']}/{index_document}"
+    key = f"{eh.state['s3_folder']}/{index_document}" if eh.state.get("s3_folder") else index_document
     print(f"bucket_name = {bucket_name}")
     print(f"key = {key}")
     # print(f"s3_url_path = {s3_url_path}")
@@ -653,7 +653,7 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
         eh.add_log(f"Fixed {index_document}", response)
 
         if error_document != index_document:
-            key = f"{eh.state['s3_folder']}/{error_document}"
+            key = f"{eh.state['s3_folder']}/{error_document}" if eh.state.get("s3_folder") else error_document
             response = s3.copy_object(
                 Bucket=bucket_name,
                 Key=key,
