@@ -28,7 +28,6 @@
                     "Sid": "Vis",
                     "Effect": "Allow",
                     "Action": [
-                        "iam:PassRole",
                         "s3:*",
                         "lambda:GetFunction",
                         "lambda:InvokeFunction",
