@@ -137,6 +137,7 @@ def lambda_handler(event, context):
             eh.add_op("setup_codebuild_project")
             eh.add_op("setup_s3")
             eh.add_op("copy_output_to_s3")
+            eh.add_op("set_object_metadata")
             if cloudfront:
                 eh.add_op("setup_cloudfront_oai", "upsert")
                 eh.add_op("setup_cloudfront_distribution", {"op": "upsert"})
@@ -146,9 +147,7 @@ def lambda_handler(event, context):
                 eh.add_op("setup_cloudfront_distribution", {
                     "op": "delete", "aliases": list(map(lambda x: x["domain"], old_domains.values()))
                 })
-                eh.add_op("set_object_metadata")
-            else:
-                eh.add_op("set_object_metadata")
+                
             if cdef.get("config"):
                 eh.add_op("add_config")
             print(prev_state.get("props", {}).keys())
