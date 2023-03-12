@@ -94,6 +94,7 @@ def lambda_handler(event, context):
 
 
         #If we are using cloudfront we should be using a folder in S3, this will be a ZDT deployment, otherwise we will just use the root, which will not be ZDT, but that is okay
+        #If we don't start the build, this will be set to the old folder
         s3_folder = str(current_epoch_time_usec_num()) if cloudfront else ""
         if not eh.state.get("s3_folder"):
             eh.add_state({"s3_folder": s3_folder})
@@ -591,6 +592,7 @@ def run_codebuild_build(codebuild_build_def, trust_level):
 
     if proceed:
         eh.add_op("copy_output_to_s3")
+        eh.add_props({"s3_folder": eh.state["s3_folder"]})
     # eh.add_op("get_final_props")
 
 
@@ -666,7 +668,7 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
             Key=key,
             CopySource=f"{bucket_name}/{key}",
             MetadataDirective="REPLACE",
-            CacheControl="max-age=0",
+            CacheControl="max-age=0, no-cache, no-store, must-revalidate",
             ContentType="text/html"
         )
         eh.add_log(f"Fixed {index_document}", response)
@@ -678,7 +680,7 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
                 Key=key,
                 CopySource=f"{bucket_name}/{key}",
                 MetadataDirective="REPLACE",
-                CacheControl="max-age=0",
+                CacheControl="max-age=0, no-cache, no-store, must-revalidate",
                 ContentType="text/html"
             )
             eh.add_log(f"Fixed {error_document}", response)
