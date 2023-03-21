@@ -105,7 +105,7 @@ def lambda_handler(event, context):
         if domains and not isinstance(domains, dict):
             eh.add_log("domains must be a dictionary", {"domains": domains})
             eh.perm_error("Invalid Domains", 0)
-        if cloudfront and not domains:
+        if cloudfront and not domains and not external_domains:
             eh.add_log("Cloudfront requires at least one domain", {"cdef": cdef}, True)
             eh.perm_error("Cloudfront requires at least one domain", 0)
         if domains and len(domains.keys()) > 1 and not cloudfront:
