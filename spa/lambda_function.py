@@ -7,6 +7,7 @@ import zipfile
 import os
 import io
 import mimetypes
+import copy
 
 from botocore.exceptions import ClientError
 
@@ -63,12 +64,24 @@ def lambda_handler(event, context):
         node_version = cdef.get("node_version") or 10
         
         cloudfront = cdef.get("cloudfront") or bool(cdef.get("cloudfront_external_id")) or bool(cdef.get("cloudfront_tags"))
+        
+        base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
+        domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_uppercase=True, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
+        domains = cdef.get("domains") or ({SOLO_KEY: {"domain": domain}} if domain else {})
+        
+        try:
+            domains = fix_domains(domains, cloudfront)
+        except Exception as e:
+            eh.add_log(str(e), {"domains": domains, "error": str(e)}, True)
+            eh.perm_error(str(e), 0)
+            return 0
+        
         external_domains = cdef.get("external_domains")
+        cloudfront_domains = copy.deepcopy(domains)
         if external_domains:
             domains = {}
             cloudfront = True
         
-        else:
             # If you want to specify a hosted zone for route53, you should set domains to:
             # {
             #     "key": {
@@ -81,16 +94,7 @@ def lambda_handler(event, context):
             # {
             #    "key": "quark.example.com"
             # }
-            base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
-            domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_uppercase=True, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
-            domains = cdef.get("domains") or ({SOLO_KEY: {"domain": domain}} if domain else {})
             
-            try:
-                domains = fix_domains(domains, cloudfront)
-            except Exception as e:
-                eh.add_log(str(e), {"domains": domains, "error": str(e)}, True)
-                eh.perm_error(str(e), 0)
-                return 0
 
         #If we are using cloudfront we should be using a folder in S3, this will be a ZDT deployment, otherwise we will just use the root, which will not be ZDT, but that is okay
         #If we don't start the build, this will be set to the old folder
@@ -178,7 +182,7 @@ def lambda_handler(event, context):
         run_codebuild_build(codebuild_build_override_def, trust_level)
         # copy_output_to_s3(cloudfront, index_document, error_document)
         set_object_metadata(cdef, index_document, error_document, region, domains, cloudfront)
-        setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def)
+        setup_cloudfront_distribution(cname, cdef, cloudfront_domains, index_document, prev_state, cloudfront_distribution_override_def)
         
         #Have to do it after CF distribution is gone
         if eh.ops.get('setup_cloudfront_oai') == "delete":
