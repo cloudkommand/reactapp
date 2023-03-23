@@ -5,6 +5,7 @@
             "displayname": "CK Single Page React Application",
             "description": "Builds and deploys a single-page React application using S3 and (if specified) Route53",
             "cloud": "AWS",
+            "ck_plugin_tier": 1,
             "resources": [
                 "AWS::s3::bucket", 
                 "AWS::codebuild::project", 
@@ -40,30 +41,68 @@
             "input": {
                 "type": "object",
                 "properties": {
-                    "codebuild_project_name": {
+                    "trust_level": {
                         "type": "string",
-                        "description": "The name of the codebuild project. If not present this name will be auto-generated."
+                        "description": "Set to full if you trust that what is in AWS has not changed since the last deployment, code if you still want to check the configuration of the pieces of code, and zero if you do not trust it at all. 'full' speeds up deployment the most, followed by 'code'. 'zero' is the safest for production environments.",
+                        "enum": ["zero", "code", "full"],
+                        "default": "code"
                     },
-                    "codebuild_runtime_versions": {
+                    "Codebuild Project": {
                         "type": "object",
-                        "description": "The dictionary of runtime versions you need to build your app. If not set, this will default to {\"nodejs\": 10}. See a list of possible values here: https://docs.aws.amazon.com/codebuild/latest/userguide/runtime-versions.html",
-                        "default": {"nodejs": 10}
+                        "description": "A dictionary of overrides for the Codebuild Project that is created to build the app. See the Codebuild Project documentation for details."
                     },
-                    "codebuild_install_commands": {
-                        "type": "array",
-                        "description": "Commands installing required libraries/packages before a build is run.",
-                        "default": []
+                    "Codebuild Build": {
+                        "type": "object",
+                        "description": "A dictionary of overrides for the Codebuild Build that is created to build the app. See the Codebuild Build documentation for details."
                     },
-                    "codebuild_build_commands": {
-                        "type": "array",
-                        "description": "Commands building the code",
-                        "default": [ "mkdir -p build", "npm install", "npm run build" ]
+                    "Distribution": {
+                        "type": "object",
+                        "description": "A dictionary of overrides for the CloudFront Distribution that is created to host the app. See the CloudFront Distribution documentation for details."
+                    },
+                    "OAI": {
+                        "type": "object",
+                        "description": "Rarely used. A dictionary of overrides for the CloudFront Origin Access Identity that is created to host the app."
                     },
                     "build_container_size": {
                         "type": "string",
-                        "description": "The size of the codebuild container. Can speed up builds if you expect them to take a long time.",
+                        "description": "The size of the codebuild container. Can speed up builds if you expect them to take a long time. Can also be set through the Codebuild Project parameter",
                         "enum": ["small", "medium", "large", "2xlarge"],
-                        "default": "medium"
+                        "default": "large"
+                    },
+                    "node_version": {
+                        "type": "integer",
+                        "description": "The version of node to use for the build. See a list of possible values here: https://docs.aws.amazon.com/codebuild/latest/userguide/runtime-versions.html",
+                        "default": 10,
+                        "common": true
+                    },
+                    "cloudfront": {
+                        "type": "boolean",
+                        "description": "Whether to create a CloudFront distribution for your website. CloudFront is required for HTTPS, and should be used in production.",
+                        "default": false,
+                        "common": true
+                    },
+                    "base_domain": {
+                        "type": "string",
+                        "description": "Pass a base domain to get a unique domain through a generated subdomain",
+                        "common": true
+                    },
+                    "domains": {
+                        "type": "object",
+                        "description": "A set of key value pairs, with the keys being a namespace, and the values being either the domain name or a dictionary with keys 'domain' and (optional) 'hosted_zone_id'. Set hosted_zone_id if you want to use a private hosted zone in Route53, if not set it will choose the closest matching public one.",
+                        "common": true,
+                        "additionalProperties": {
+                            "type": ["object", "string"],
+                            "properties": {
+                                "domain": {
+                                    "type": "string",
+                                    "description": "The domain name to use for this API"
+                                },
+                                "hosted_zone_id": {
+                                    "type": "string",
+                                    "description": "The ID of the Route53 hosted zone to use for this domain"
+                                }
+                            }
+                        }
                     },
                     "index_document": {
                         "type": "string",
@@ -75,62 +114,150 @@
                         "description": "The path that handles 4XX class errors. Can be the same as the index_document",
                         "default": "index.html"
                     },
-                    "s3_tags": {
-                        "type": "object",
-                        "description": "Key-value pairs to attach as tags to the s3 bucket"
-                    },
-                    "domain": {
-                        "type": "string",
-                        "description": "The domain name for your website"
-                    },
-                    "base_domain": {
-                        "type": "string",
-                        "description": "Pass a base domain to get a unique domain through a generated subdomain"
-                    },
-                    "cloudfront": {
-                        "type": "boolean",
-                        "description": "Whether to create a CloudFront distribution for your website",
-                        "default": false
-                    },
-                    "keep_bucket_private": {
-                        "type": "boolean",
-                        "description": "Whether to keep the bucket private (using a cloudfront origin access identity) or not",
-                        "default": false
-                    },
                     "config": {
                         "type": "object",
                         "description": "Use this parameter to inject environment-variable like data into your react app. Passing this parameter writes a file into the provided path with the following function: export function get_config() {{return {json.dumps(data, indent=2)}}};",
                         "properties": {
-                            "path": {
+                            "filepath": {
                                 "type": "string",
-                                "description": "The path to the config file to write"
+                                "description": "The path to the config file to write",
+                                "default": "src/config/config.js"
                             },
                             "data": {
                                 "type": "object",
                                 "description": "Key value pairs to add to the function in the config file."
                             }
-                        }
+                        },
+                        "common": true
+                    },
+                    "oai_existing_id": {
+                        "type": "string",
+                        "description": "If using cloudfront and you already have an OAI you wish to use, pass the ID here. Else one will be created for you."
+                    },
+                    "s3_bucket_name": {
+                        "type": "string",
+                        "description": "CloudKommand recommends against setting this value, as it can slow down deployments. The name of the S3 bucket to use for the website. If not present this name will be auto-generated."
+                    },
+                    "s3_tags": {
+                        "type": "object",
+                        "description": "Key-value pairs to attach as tags to the s3 bucket",
+                        "common": true
+                    },
+                    "cloudfront_existing_id": {
+                        "type": "string",
+                        "description": "If you wish to 'pick-up' an existing CloudFront distribution, pass the ID here. Passing this sets cloudfront to true. This can also be set through the 'Distribution' parameter."
+                    },
+                    "cloudfront_tags": {
+                        "type": "object",
+                        "description": "Key-value pairs to attach as tags to the cloudfront distribution. Passing this sets cloudfront to true. This can also be set through the 'Distribution' parameter.",
+                        "common": true
+                    },
+                    "external_domains": {
+                        "type": "boolean",
+                        "description": "If you are using a domains hosted outside of AWS, set this to true. This will cause the component to not create Route53 records for the domain.",
+                        "default": false
                     }
                 }
             },
             "props": {
-                "codebuild_project_arn": {
-                    "type": "string",
-                    "description": "The ARN of the codebuild project"
+                "Codebuild Project": {
+                    "type": "object",
+                    "description": "Props from the codebuild project deployed"
                 },
-                "codebuild_project_name": {
-                    "type": "string",
-                    "description": "The name of the codebuild project"
+                "Codebuild Build": {
+                    "type": "object",
+                    "description": "Props from the codebuild build component"
+                },
+                "OAI": {
+                    "type": "object",
+                    "description": "Props from the OAI component deployed"
+                },
+                "Distribution": {
+                    "type": "object",
+                    "description": "Props from the cloudfront distribution deployed"
                 },
                 "S3": {
                     "type": "object",
                     "description": "Props from the S3 component deployed"
                 },
-                "Route53": {
+                "Route53_{key}": {
                     "type": "object",
-                    "description": "Props from the route53 component deployed, if there is one"
+                    "description": "Props from a route53 component deployed. There will be one of these for each domain you pass in the domains parameter."
                 }
-            }
+            },
+            "examples": [
+                {
+                    "displayname": "Production Website with CloudFront and Multiple Domains",
+                    "notes": "This example shows how to deploy a production website with CloudFront and multiple domains. One of the domains also deploys into a private hosted zone. It also shows how to use the config parameter to inject environment-variable like data into your react app.",
+                    "definition": {
+                        "type": "&reactapp.spa",
+                        "config": {
+                            "filepath": "src/custom/config.js",
+                            "data": {
+                                "client_id": "1234567890",
+                                "other_id": "$other_id"
+                            }
+                        },
+                        "cloudfront": true,
+                        "domains": {
+                            "api": {
+                                "domain": "app.example.com",
+                                "hosted_zone_id": "Z2P70J7EXAMPLE"
+                            },
+                            "app": "app.example.com",
+                            "www": "www.example.com"
+                        },
+                        "node_version": 14,
+                        "s3_tags": {
+                            "environment": "production"
+                        }
+                    }
+                },
+                {
+                    "displayname": "Development Website with Cloudfront and a Base Domain",
+                    "notes": "This example shows how to deploy a development website with CloudFront and a base domain. Using this configuration, multiple groups can develop using the same component without having to override the domains parameter in each project.",
+                    "definition": {
+                        "type": "&reactapp.spa",
+                        "cloudfront": true,
+                        "base_domain": "example.com",
+                        "config": {
+                            "data": {
+                                "client_id": "1234567890"
+                            }
+                        },
+                        "node_version": 14
+                    }
+                },
+                {
+                    "displayname": "Personal Website with Route53",
+                    "notes": "This example shows how to deploy a personal website with Route53 (without Cloudfront).",
+                    "definition": {
+                        "type": "&reactapp.spa",
+                        "config": {
+                            "data": {
+                                "client_id": "1234567890"
+                            }
+                        },
+                        "domains": {
+                            "www": "www.example.com"
+                        },
+                        "node_version": 12
+                    }
+                },
+                {
+                    "displayname": "Development Website with S3",
+                    "notes": "This is the fastest, simplest way to deploy a react website. It uses S3 public hosting and does not use CloudFront or Route53.",
+                    "definition": {
+                        "type": "&reactapp.spa",
+                        "config": {
+                            "data": {
+                                "client_id": "1234567890"
+                            }
+                        },
+                        "node_version": 12
+                    }
+                }
+            ]
         }
     },
     "repos": {

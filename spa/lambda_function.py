@@ -7,6 +7,7 @@ import zipfile
 import os
 import io
 import mimetypes
+import copy
 
 from botocore.exceptions import ClientError
 
@@ -45,11 +46,6 @@ def lambda_handler(event, context):
         cdef = event.get("component_def")
         cname = event.get("component_name")
         trust_level = cdef.get("trust_level") or "code"
-
-        # codebuild_project_name = cdef.get("codebuild_project_name") or component_safe_name(project_code, repo_id, cname)
-        # codebuild_runtime_versions = cdef.get("codebuild_runtime_versions") or {"nodejs": 10} # assume dictionary with this format
-        # codebuild_install_commands = cdef.get("codebuild_install_commands") or None
-        # codebuild_build_commands = cdef.get("codebuild_build_commands") or [ "mkdir -p build", "npm install", "npm run build" ]
         
         codebuild_project_override_def = cdef.get(CODEBUILD_PROJECT_KEY) or {} #For codebuild project overrides
         codebuild_build_override_def = cdef.get(CODEBUILD_BUILD_KEY) or {} #For codebuild build overrides
@@ -67,8 +63,8 @@ def lambda_handler(event, context):
         build_container_size = cdef.get("build_container_size")
         node_version = cdef.get("node_version") or 10
         
-        cloudfront = cdef.get("cloudfront")
-
+        cloudfront = cdef.get("cloudfront") or bool(cdef.get("cloudfront_external_id")) or bool(cdef.get("cloudfront_tags"))
+        
         base_domain_length = len(cdef.get("base_domain")) if cdef.get("base_domain") else 0
         domain = cdef.get("domain") or (form_domain(component_safe_name(project_code, repo_id, cname, no_uppercase=True, no_underscores=True, max_chars=62-base_domain_length), cdef.get("base_domain")) if cdef.get("base_domain") else None)
         domains = cdef.get("domains") or ({SOLO_KEY: {"domain": domain}} if domain else {})
@@ -79,19 +75,26 @@ def lambda_handler(event, context):
             eh.add_log(str(e), {"domains": domains, "error": str(e)}, True)
             eh.perm_error(str(e), 0)
             return 0
-        # If you want to specify a hosted zone for route53, you should set domains to:
-        # {
-        #     "key": {
-        #         "domain": "quark.example.com",
-        #         "hosted_zone_id": "Z2FDTNDATAQYW2"
-        #     }
-        # }
-        # Otherwise, if you are okay with it picking the closest public hosted zone, 
-        # you can set it to:
-        # {
-        #    "key": "quark.example.com"
-        # }
-
+        
+        external_domains = cdef.get("external_domains")
+        cloudfront_domains = copy.deepcopy(domains)
+        if external_domains:
+            domains = {}
+            cloudfront = True
+        
+            # If you want to specify a hosted zone for route53, you should set domains to:
+            # {
+            #     "key": {
+            #         "domain": "quark.example.com",
+            #         "hosted_zone_id": "Z2FDTNDATAQYW2"
+            #     }
+            # }
+            # Otherwise, if you are okay with it picking the closest public hosted zone, 
+            # you can set it to:
+            # {
+            #    "key": "quark.example.com"
+            # }
+            
 
         #If we are using cloudfront we should be using a folder in S3, this will be a ZDT deployment, otherwise we will just use the root, which will not be ZDT, but that is okay
         #If we don't start the build, this will be set to the old folder
@@ -102,7 +105,7 @@ def lambda_handler(event, context):
         if domains and not isinstance(domains, dict):
             eh.add_log("domains must be a dictionary", {"domains": domains})
             eh.perm_error("Invalid Domains", 0)
-        if cloudfront and not domains:
+        if cloudfront and not domains and not external_domains:
             eh.add_log("Cloudfront requires at least one domain", {"cdef": cdef}, True)
             eh.perm_error("Cloudfront requires at least one domain", 0)
         if domains and len(domains.keys()) > 1 and not cloudfront:
@@ -178,8 +181,8 @@ def lambda_handler(event, context):
         setup_codebuild_project(op, bucket, object_name, build_container_size, node_version, codebuild_project_override_def, trust_level)
         run_codebuild_build(codebuild_build_override_def, trust_level)
         # copy_output_to_s3(cloudfront, index_document, error_document)
-        set_object_metadata(cdef, index_document, error_document, region, domains)
-        setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_state, cloudfront_distribution_override_def)
+        set_object_metadata(cdef, index_document, error_document, region, domains, cloudfront)
+        setup_cloudfront_distribution(cname, cdef, cloudfront_domains, index_document, prev_state, cloudfront_distribution_override_def)
         
         #Have to do it after CF distribution is gone
         if eh.ops.get('setup_cloudfront_oai') == "delete":
@@ -189,7 +192,7 @@ def lambda_handler(event, context):
         else:
             delete_s3()
 
-        setup_route53(cdef, prev_state)
+        setup_route53(cloudfront, cdef, prev_state)
         # invalidate_files()
         # check_invalidation_complete()
             
@@ -382,7 +385,7 @@ def setup_s3(cname, cdef, domains, index_document, error_document, prev_state, c
     if domain_name and not cloudfront:
         allow_alternate_bucket_name = False
 
-    if cdef.get("cloudfront") and op == "upsert":
+    if cloudfront and op == "upsert":
         bucket_policy = {
             "Version": "2012-10-17",
             "Id": "BucketPolicyCloudfront",
@@ -654,7 +657,7 @@ def run_codebuild_build(codebuild_build_def, trust_level):
 #                 file_bytes.close()
 
 @ext(handler=eh, op="set_object_metadata")
-def set_object_metadata(cdef, index_document, error_document, region, domains):
+def set_object_metadata(cdef, index_document, error_document, region, domains, cloudfront):
     bucket_name = eh.props[S3_KEY]["name"]
     
     key = f"{eh.state['s3_folder']}/{index_document}" if eh.state.get("s3_folder") else index_document
@@ -686,7 +689,7 @@ def set_object_metadata(cdef, index_document, error_document, region, domains):
             eh.add_log(f"Fixed {error_document}", response)
 
 
-        if (not cdef.get("cloudfront")) and (not domains):
+        if (not cloudfront) and (not domains):
             eh.add_links({"Website URL": gen_s3_url(bucket_name, "/", region)})
     except botocore.exceptions.ClientError as e:
         eh.add_log("Error setting Object Metadata", {"error": str(e)}, True)
@@ -752,7 +755,7 @@ def setup_cloudfront_distribution(cname, cdef, domains, index_document, prev_sta
     print(f"proceed = {proceed}")
         
 @ext(handler=eh, op="setup_route53", complete_op=False)
-def setup_route53(cdef, prev_state, i=1):
+def setup_route53(cloudfront, cdef, prev_state, i=1):
     print(f"props = {eh.props}")
     op_val = eh.ops["setup_route53"]
     delete_domains = op_val.get("delete")
@@ -789,7 +792,7 @@ def setup_route53(cdef, prev_state, i=1):
             eh.perm_error("'domains' dictionary must contain a 'domain' key inside the domain key")
             return
 
-        if cdef.get("cloudfront"):
+        if cloudfront:
             component_def = remove_none_attributes({
                 "domain": domain,
                 "route53_hosted_zone_id": hosted_zone_id,
@@ -822,14 +825,14 @@ def setup_route53(cdef, prev_state, i=1):
             del delete_domains[domain_key]
         else:
             link_name = f"{domain_key} Website URL"
-            if cdef.get("cloudfront"):
+            if cloudfront:
                 eh.add_links({link_name: f'https://{eh.props[child_key].get("domain")}'})
             else:
                 eh.add_links({link_name: f'http://{eh.props[child_key].get("domain")}'})
             del upsert_domains[domain_key]
         if delete_domains or upsert_domains:
             eh.add_op("setup_route53", {"delete": delete_domains, "upsert": upsert_domains})
-            setup_route53(cdef, prev_state, i=i+1)
+            setup_route53(cloudfront, cdef, prev_state, i=i+1)
         else:
             eh.complete_op("setup_route53")
 
