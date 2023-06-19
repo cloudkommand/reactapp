@@ -8,6 +8,7 @@ import os
 import io
 import mimetypes
 import copy
+import hashlib
 
 from botocore.exceptions import ClientError
 
@@ -29,6 +30,7 @@ ROUTE53_KEY = "Route53"
 
 cloudfront = boto3.client("cloudfront")
 s3 = boto3.client('s3')
+lambda_client = boto3.client('lambda')
 
 
 def lambda_handler(event, context):
@@ -168,6 +170,7 @@ def lambda_handler(event, context):
                 eh.add_op("setup_route53", {"delete": domains})
 
         compare_defs(event)
+        check_code_sha(event, context)
         compare_etags(event, bucket, object_name, trust_level)
 
         load_initial_props(bucket, object_name)
@@ -218,18 +221,42 @@ def get_s3_etag(bucket, object_name):
 
 @ext(handler=eh, op="compare_defs")
 def compare_defs(event):
-    old_rendef = event.get("prev_state", {}).get("rendef", {})
+    old_digest = event.get("prev_state", {}).get("props", {}).get("def_hash")
     new_rendef = event.get("component_def")
 
-    _ = old_rendef.pop("trust_level", None)
     _ = new_rendef.pop("trust_level", None)
 
-    if old_rendef == new_rendef:
-        eh.add_op("compare_etags")
+    dhash = hashlib.md5()
+    dhash.update(json.dumps(new_rendef, sort_keys=True).encode())
+    digest = dhash.hexdigest()
+    eh.add_props({"def_hash": digest})
+
+    if old_digest == digest:
+        eh.add_log("Definitions Match, Checking Deploy Code", {"old_hash": old_digest, "new_hash": digest})
+        eh.add_op("check_code_sha") 
 
     else:
-        eh.add_op("load_initial_props")
-        eh.add_log("Definitions Don't Match, Deploying", {"old": old_rendef, "new": new_rendef})
+        eh.add_log("Definitions Don't Match, Deploying", {"old": old_digest, "new": digest})
+
+@ext(handler=eh, op="check_code_sha")
+def check_code_sha(event, context):
+    old_props = event.get("prev_state", {}).get("props", {})
+    old_sha = old_props.get("code_sha")
+    try:
+        new_sha = lambda_client.get_function(
+            FunctionName=context.function_name
+        ).get("Configuration", {}).get("CodeSha256")
+        eh.add_props({"code_sha": new_sha})
+    except ClientError as e:
+        handle_common_errors(e, eh, "Get Layer Function Failed", 2)
+        
+    if old_sha == new_sha:
+        eh.add_log("Deploy Code Matches, Checking Code", {"old_sha": old_sha, "new_sha": new_sha})
+        eh.add_op("compare_etags") 
+    
+    else:
+        eh.add_log("Deploy Code Doesn't Match, Deploying", {"old_sha": old_sha, "new_sha": new_sha})
+
 
 @ext(handler=eh, op="compare_etags")
 def compare_etags(event, bucket, object_name, trust_level):
