@@ -137,9 +137,8 @@ def lambda_handler(event, context):
 
             if trust_level in ["full", "code"]:
                 eh.add_op("compare_defs")
-            else: #In case we want to change the trust level later
-                eh.add_op("load_initial_props")
-            
+
+            eh.add_op("load_initial_props")            
             eh.add_op("setup_codebuild_project")
             eh.add_op("setup_s3")
             eh.add_op("copy_output_to_s3")
@@ -173,7 +172,7 @@ def lambda_handler(event, context):
         check_code_sha(event, context)
         compare_etags(event, bucket, object_name, trust_level)
 
-        load_initial_props(bucket, object_name)
+        load_initial_props(bucket, object_name, context)
 
         add_config(bucket, object_name, cdef.get("config"))
         if eh.ops.get('setup_cloudfront_oai') == "upsert":
@@ -300,10 +299,19 @@ def compare_etags(event, bucket, object_name, trust_level):
             eh.add_log("Code Changed, Deploying", {"old_etag": initial_etag, "new_etag": new_etag})
 
 @ext(handler=eh, op="load_initial_props")
-def load_initial_props(bucket, object_name):
+def load_initial_props(bucket, object_name, context):
     get_s3_etag(bucket, object_name)
     if eh.state.get("zip_etag"):
         eh.add_props({"initial_etag": eh.state.get("zip_etag")})
+
+    try:
+        new_sha = lambda_client.get_function(
+            FunctionName=context.function_name
+        ).get("Configuration", {}).get("CodeSha256")
+        eh.add_props({"code_sha": new_sha})
+    except ClientError as e:
+        handle_common_errors(e, eh, "Get Layer Function Failed", 2)
+    
 
 # def format_tags(tags_dict):
 #     return [{"Key": k, "Value": v} for k,v in tags_dict]
