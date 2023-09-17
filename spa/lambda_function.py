@@ -250,7 +250,7 @@ def check_code_sha(event, context):
         handle_common_errors(e, eh, "Get Layer Function Failed", 2)
         
     if old_sha == new_sha:
-        eh.add_log("Deploy Code Matches, Checking Code", {"old_sha": old_sha, "new_sha": new_sha})
+        eh.add_log("Deploy Code Matches, Checking UI Code", {"old_sha": old_sha, "new_sha": new_sha})
         eh.add_op("compare_etags") 
     
     else:
@@ -276,7 +276,7 @@ def compare_etags(event, bucket, object_name, trust_level):
                 eh.add_state(event.get("prev_state", {}).get("state", {}))
                 eh.declare_return(200, 100, success=True)
             else: #Code
-                eh.add_log("Zipfile Unchanged, Skipping Build", {"initial_etag": initial_etag, "new_etag": new_etag})
+                eh.add_log("UI Code Unchanged, Skipping Build", {"initial_etag": initial_etag, "new_etag": new_etag})
                 eh.add_props({
                     CODEBUILD_PROJECT_KEY: old_props.get(CODEBUILD_PROJECT_KEY),
                     CODEBUILD_BUILD_KEY: old_props.get(CODEBUILD_BUILD_KEY),
